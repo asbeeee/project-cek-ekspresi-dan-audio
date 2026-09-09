@@ -1,10 +1,8 @@
-# Tugas Akhir - Multimodal Emotion Fusion
 
 Real-time multimodal emotion recognition:
 YOLO (wajah, FER2013) + CNN-MFCC (audio, RAVDESS + CREMA-D) → decision-level fusion.
 Termasuk respons robot AiNex Hiwonder (lambaian tangan pada ekspresi *happy*).
 
-**Hasbi Huda Maulaya - 140910220045**
 
 ## Struktur
 
