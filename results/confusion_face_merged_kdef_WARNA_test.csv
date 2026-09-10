@@ -1,0 +1,8 @@
+asli\prediksi,angry,disgust,fear,happy,neutral,sad,surprise
+angry,45,16,0,0,2,9,0
+disgust,0,67,1,0,0,4,0
+fear,1,4,64,0,1,2,0
+happy,0,0,0,72,0,0,0
+neutral,0,0,0,0,56,16,0
+sad,0,3,1,0,0,68,0
+surprise,1,0,1,0,0,0,70

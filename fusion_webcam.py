@@ -27,6 +27,29 @@ Kontrol
     q = keluar | a/z = alpha +/- | t/g = tau +/-
     (a/z dinonaktifkan saat --no_speech, karena fusion memakai visual saja)
 
+Input grayscale (GRAYSCALE_INPUT)
+--------------------------------
+Model wajah dilatih dari gambar grayscale - FER2013 memang selalu grayscale,
+dan KDEF diubah jadi grayscale saat digabung - sementara kamera mengirim gambar
+berwarna. Kalau dibiarkan, model dipakai di kondisi yang tidak pernah dilihatnya
+saat latih. Karena itu potongan wajah diubah ke grayscale dulu sebelum masuk
+model. Diukur pada 504 gambar test KDEF (12 orang yang tidak ikut dilatih),
+akurasi model gabungan naik dari 0.8770 (berwarna) jadi 0.9306 (grayscale).
+
+Yang diubah HANYA potongan wajah yang masuk model. Frame yang tampil di layar
+tetap berwarna. Status mode terlihat di overlay sebagai 'input=gray'/'input=warna'.
+
+Untuk mematikannya, ubah GRAYSCALE_INPUT jadi False di bagian KONFIGURASI,
+atau jalankan dengan --no_grayscale tanpa mengubah kode.
+
+Emosi majemuk dan 'netral'
+--------------------------
+Netral tidak pernah jadi bagian emosi majemuk. Netral itu ketiadaan ekspresi,
+jadi gabungan seperti "Sedih-Netral" tidak punya arti - yang dimaksud sebenarnya
+"agak sedih", dan itu sudah terwakili oleh label tunggalnya. Kalau salah satu
+dari dua kelas teratas adalah netral, keputusannya dipaksa jadi TUNGGAL memakai
+kelas teratas, walaupun selisihnya lebih kecil dari tau.
+
 PERUBAHAN v3
 ------------
 - Tambah --camera_url : membaca MJPEG / ROS web_video_server dari robot AiNex.
@@ -92,6 +115,15 @@ EMOTIONS_ID = {
 ALPHA = 0.6
 TAU = 0.20
 TAU_CONF = 0.40
+
+# Ubah potongan wajah ke grayscale sebelum masuk model, menyamakannya dengan
+# data latih. Lihat penjelasan lengkap di docstring paling atas.
+# Ganti ke False untuk mematikan, atau pakai --no_grayscale saat menjalankan.
+GRAYSCALE_INPUT = True
+
+# Kelas yang tidak boleh muncul sebagai bagian emosi majemuk. Lihat penjelasan
+# di docstring paling atas.
+NO_COMPOUND = ('neutral',)
 
 SR = 16000
 DURATION = 3
@@ -180,22 +212,27 @@ class AudioWorker:
 #   PC ini adalah HTTP request ke endpoint yang di sisi robot memanggil
 #   action group tersebut.
 #
-#   Contoh sederhana (di sisi robot, jalankan server kecil):
-#       @app.post("/wave")
-#       def wave(): subprocess.Popen(["rosrun", "hiwonder_servo_controllers",
-#                                     "run_action_group.py", "wave.d6a"])
-#
-#   Lalu di sisi PC ini panggil:
+#   Server kecil itu sudah disediakan di repo: Servers/ainex_wave_server.py.
+#   Salin ke robot, jalankan di sana (di dalam kontainer Docker untuk image
+#   Pi 5), lalu di sisi PC ini panggil:
 #       python fusion_webcam.py --camera_url ... \
 #              --wave_url http://192.168.50.2:5000/wave
+#
+#   Catatan soal "token": AiNex tidak butuh token untuk menggerakkan servo.
+#   API key di dokumentasi Hiwonder (llm_api_key / vllm_api_key di
+#   /home/ubuntu/large_models/config.py) hanya untuk fitur AI Large Model
+#   (chat LLM + text-to-speech), bukan untuk action group. Kalau endpoint
+#   /wave mau dikunci, pakai shared secret sendiri: --token di sisi robot,
+#   --wave_token di sisi PC.
 #
 # Kalau --wave_url tidak diisi, sistem tetap jalan tapi hanya mencetak
 # "[ROBOT] WAVE!" ke konsol (mode dry-run, berguna untuk pengujian).
 class RobotController:
     def __init__(self, wave_url=None, method='POST', cooldown=60.0,
-                 timeout=2.0, enabled=True):
+                 timeout=2.0, enabled=True, token=None):
         self.wave_url = wave_url
         self.method = method.upper()
+        self.token = token
         self.cooldown = float(cooldown)
         self.timeout = float(timeout)
         self.enabled = enabled
@@ -234,6 +271,8 @@ class RobotController:
             if self.method in ('POST', 'PUT'):
                 req.data = b''
                 req.add_header('Content-Type', 'application/json')
+            if self.token:
+                req.add_header('Authorization', 'Bearer %s' % self.token)
             with urlopen(req, timeout=self.timeout) as resp:
                 print("[ROBOT] WAVE terkirim (%s %s -> HTTP %d)" %
                       (self.method, self.wave_url, resp.status))
@@ -522,6 +561,11 @@ def compound_emotion_decision(p_final, tau, tau_conf):
     elif gap >= tau:
         return {'label_id': EMOTIONS_ID[EMOTIONS[t1]], 'type': 'TUNGGAL',
                 'c1': t1, 'c2': t2, 'p1': p1, 'p2': p2, 'gap': gap}
+    elif EMOTIONS[t1] in NO_COMPOUND or EMOTIONS[t2] in NO_COMPOUND:
+        # Netral bukan ekspresi yang bisa dicampur. "Sedih-Netral" sebenarnya
+        # berarti "agak sedih", dan itu sudah diwakili label tunggalnya.
+        return {'label_id': EMOTIONS_ID[EMOTIONS[t1]], 'type': 'TUNGGAL',
+                'c1': t1, 'c2': t2, 'p1': p1, 'p2': p2, 'gap': gap}
     else:
         lbl = "%s-%s" % (EMOTIONS_ID[EMOTIONS[t1]], EMOTIONS_ID[EMOTIONS[t2]])
         return {'label_id': lbl, 'type': 'MAJEMUK',
@@ -608,7 +652,8 @@ def draw_overlay(frame, p_visual, p_audio, p_final, result, alpha, tau,
                       color if is_top1 else (110, 110, 110), -1)
 
     yb = y0 + 7 * 34 + 16
-    cv2.putText(frame, "alpha=%.2f  tau=%.2f  conf>=%.2f" % (alpha, tau, TAU_CONF),
+    cv2.putText(frame, "alpha=%.2f  tau=%.2f  conf>=%.2f  input=%s"
+                % (alpha, tau, TAU_CONF, "gray" if GRAYSCALE_INPUT else "warna"),
                 (12, yb), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (180, 220, 255), 1)
 
     if speech_on:
@@ -696,6 +741,17 @@ def parse_args(argv=None):
                        help="Ambang keyakinan minimum (default: %.2f)." % TAU_CONF)
 
     g_mdl = p.add_argument_group("Model")
+    # default=None supaya konstanta GRAYSCALE_INPUT di atas yang menentukan
+    # kalau tidak ada argumen yang dipakai.
+    g_mdl.add_argument('--grayscale', dest='grayscale', action='store_true',
+                       default=None,
+                       help="Paksa potongan wajah jadi grayscale sebelum masuk "
+                            "model (default: %s)." % ("aktif" if GRAYSCALE_INPUT
+                                                      else "nonaktif"))
+    g_mdl.add_argument('--no_grayscale', '--no-grayscale', dest='grayscale',
+                       action='store_false',
+                       help="Kirim potongan wajah apa adanya (berwarna). "
+                            "Tampilan di layar tidak terpengaruh keduanya.")
     g_mdl.add_argument('--visual_model', '--visual-model', dest='visual_model',
                        default=VISUAL_MODEL_PATH, help="Path bobot YOLO klasifikasi wajah.")
     g_mdl.add_argument('--audio_model', '--audio-model', dest='audio_model',
@@ -717,6 +773,12 @@ def parse_args(argv=None):
     g_rbt.add_argument('--wave_timeout', '--wave-timeout', dest='wave_timeout',
                        type=float, default=2.0, metavar='DETIK',
                        help="Timeout request HTTP wave (default: 2 detik).")
+    g_rbt.add_argument('--wave_token', '--wave-token', dest='wave_token',
+                       default=None, metavar='TOKEN',
+                       help="Shared secret yang dikirim sebagai header "
+                            "'Authorization: Bearer TOKEN'. Isi kalau server di "
+                            "robot (Servers/ainex_wave_server.py) dijalankan "
+                            "dengan --token.")
     g_rbt.add_argument('--no_wave', '--no-wave', dest='no_wave', action='store_true',
                        help="Matikan respons robot sepenuhnya.")
 
@@ -733,10 +795,12 @@ def parse_args(argv=None):
 # MAIN
 # ===================================================================
 def main(argv=None):
-    global ALPHA, TAU, TAU_CONF, DEVICE
+    global ALPHA, TAU, TAU_CONF, DEVICE, GRAYSCALE_INPUT
 
     args = parse_args(argv)
     ALPHA = 1.0 if args.no_speech else args.alpha
+    if args.grayscale is not None:
+        GRAYSCALE_INPUT = args.grayscale
     TAU = args.tau
     TAU_CONF = args.tau_conf
     DEVICE = args.device
@@ -780,6 +844,7 @@ def main(argv=None):
         cooldown=args.wave_cooldown,
         timeout=args.wave_timeout,
         enabled=not args.no_wave,
+        token=args.wave_token,
     )
     if args.no_wave:
         print("[robot] Respons robot DIMATIKAN (--no_wave).")
@@ -862,6 +927,9 @@ def main(argv=None):
             if face_box is not None:
                 face_img = crop_face(frame, face_box)
                 if face_img.size > 0:
+                    if GRAYSCALE_INPUT:
+                        abu = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
+                        face_img = cv2.cvtColor(abu, cv2.COLOR_GRAY2BGR)
                     results = visual_model.predict(face_img, imgsz=args.imgsz, verbose=False)
                     last_p_visual = results[0].probs.data.cpu().numpy()
             p_visual = last_p_visual

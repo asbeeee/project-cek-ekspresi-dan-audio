@@ -35,3 +35,10 @@ Thumbs.db
 # Local overrides
 *.local
 .env
+
+# Hasil evaluasi: cache inferensi (besar, bisa dibuat ulang)
+results/cache/
+
+# Model pretrained nyasar hasil unduhan otomatis ultralytics di root
+# (versi resminya sudah ada di webcam/models/yolo26n.pt)
+/yolo26n.pt

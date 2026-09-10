@@ -1,0 +1,268 @@
+DATASET YANG DIPAKAI
+====================
+Tugas Akhir - Hasbi Huda Maulaya (140910220045)
+Multimodal Emotion Recognition (wajah + suara) + respons robot AiNex
+
+Disusun: 10 September 2026
+
+Semua angka di bawah dihitung langsung dari isi folder di komputer ini, bukan
+dari dokumentasi dataset. Bagian "YANG BELUM DIKETAHUI" di paling bawah berisi
+hal-hal yang TIDAK bisa diverifikasi dari berkas dan perlu dicek sendiri.
+
+
+===============================================================================
+A. MODALITAS WAJAH
+===============================================================================
+
+A1. FER2013
+-----------
+Lokasi   : webcam/datasets/fer2013/
+Format   : JPG 48x48, grayscale
+Dipakai  : YA - dataset utama model wajah (baseline dan gabungan)
+
+Berkas fer2013.csv aslinya masih ada di folder itu.
+
+Pembagian yang dipakai:
+    train           28709 gambar
+    test_original    7178 gambar   <- ini test bawaan FER2013
+    val              3587 gambar   \  hasil pecahan test_original,
+    test             3591 gambar   /  keduanya tidak beririsan
+
+    Sudah diverifikasi: val dan test dua-duanya himpunan bagian dari
+    test_original, dan irisan val-test = 0 berkas.
+    3587 + 3591 = 7178, jadi test_original terpakai habis.
+
+    Catatan: FER2013 bawaan membagi 7178 itu jadi PublicTest 3589 +
+    PrivateTest 3589. Di proyek ini keduanya digabung lalu dipecah ulang
+    jadi val/test dengan pembagian yang berbeda.
+
+Jumlah per kelas di train:
+    angry      3995
+    disgust     436   <- kelas paling sedikit
+    fear       4097
+    happy      7215   <- kelas paling banyak
+    neutral    4965
+    sad        4830
+    surprise   3171
+    Ketimpangan 16.36x antara happy dan disgust.
+
+
+A2. KDEF (Karolinska Directed Emotional Faces)
+----------------------------------------------
+Lokasi   : webcam/datasets/KDEF_and_AKDEF/KDEF/
+Format   : JPG 562x762, berwarna
+Dipakai  : YA - digabung dengan FER2013 untuk model gabungan
+
+Isi mentah:
+    140 folder subjek, 4900 gambar
+    140 folder = 70 ORANG x 2 sesi pemotretan (A dan B)
+    tiap orang: 7 emosi x 5 sudut = 35 gambar per sesi
+
+    Penting: folder AF01 dan BF01 adalah orang yang SAMA. Karena itu
+    pembagian train/val/test dilakukan per orang (70 orang dibagi
+    48/10/12), bukan per gambar.
+
+Sudut: FL (full left), HL (half left), S (straight), HR (half right),
+       FR (full right)
+Emosi: AF=fear, AN=angry, DI=disgust, HA=happy, NE=neutral, SA=sad,
+       SU=surprise
+
+Yang benar-benar dipakai (webcam/scripts/kdefTrain.py, default):
+    sudut S + HL + HR saja  -> 2940 gambar
+    dikurangi 4 gambar rusak -> 2936 gambar
+    dipotong wajah (Haar + padding 20%), diubah ke 224x224
+    hasil di webcam/datasets/kdef/
+
+Cacat di rilis aslinya, ditemukan saat pemrosesan:
+    - 4 berkas isinya hitam polos (ukuran persis 12104 byte, mean 0.61):
+        AF11NEHL.JPG, AF20DIHL.JPG, BM22DIHL.JPG, BF13NEHR.JPG
+      Keempatnya dibuang otomatis.
+    - 2 berkas namanya salah: AF31V.JPG dan AM31H.JPG
+      Diperbaiki jadi AF31SAHL dan AM31SUHR lewat tabel ERRATA di skrip.
+      Nama benarnya DISIMPULKAN dari berkas yang hilang di folder yang
+      sama, bukan dari dokumentasi resmi - lihat bagian YANG BELUM
+      DIKETAHUI.
+
+
+A3. AKDEF (Averaged KDEF)
+-------------------------
+Lokasi   : webcam/datasets/KDEF_and_AKDEF/AKDEF/
+Isi      : 70 gambar wajah rata-rata (gender x emosi x sudut)
+Dipakai  : TIDAK
+
+Alasan tidak dipakai: wajah-wajah itu hasil rata-rata dari SEMUA subjek
+KDEF, termasuk orang-orang yang ada di split val dan test. Kalau ikut
+dilatih, informasi dari test set bocor ke train. Skrip menyediakan opsi
+--include_akdef yang memasukkannya ke train saja, tapi opsi itu tidak
+dipakai.
+
+Satu berkasnya juga salah nama di rilis aslinya: FAHR.JPG seharusnya
+FAFHR.JPG (afraid, half right).
+
+
+A4. FERPlus
+-----------
+Lokasi   : webcam/datasets/FERPlus/
+Isi      : fer2013new.csv, src/, data/, dokumentasi
+Dipakai  : TIDAK
+
+Sudah diperiksa dengan grep ke seluruh berkas .py di proyek ini: tidak ada
+satu pun skrip proyek yang menyebut FERPlus. Satu-satunya berkas .py yang
+menyebutnya adalah bawaan FERPlus sendiri di webcam/datasets/FERPlus/src/.
+
+Jadi FERPlus ter-download tapi tidak terpakai di pipeline mana pun. Lihat
+bagian YANG BELUM DIKETAHUI - bisa jadi dulu sempat dipakai untuk percobaan
+yang tidak tercatat di repo ini.
+
+
+A5. Dataset wajah gabungan
+--------------------------
+Lokasi : webcam/datasets/combined/   (dibuat webcam/scripts/merge_datasets.py)
+Isi    : FER2013 + KDEF, semuanya grayscale
+
+    split   fer2013    kdef    total    %kdef
+    train     28709    8052    36761    21.9%
+    val        3587     419     4006    10.5%
+    test       3591     504     4095    12.3%
+    TOTAL     35887    8975    44862
+
+    KDEF diulang 4x di split train saja (--kdef_repeat), supaya porsinya
+    tidak cuma 6.6%. Val dan test tidak diulang.
+    Semua dijadikan grayscale supaya model tidak memakai warna sebagai
+    petunjuk asal dataset.
+
+
+===============================================================================
+B. MODALITAS SUARA
+===============================================================================
+
+B1. RAVDESS
+-----------
+Lokasi   : audio/datasets/ravdess/AudioWAV/
+Isi      : 1440 berkas WAV
+Dipakai  : YA
+
+Diverifikasi dari pola nama berkas
+(modalitas-kanal-emosi-intensitas-kalimat-pengulangan-aktor):
+    kanal vokal : 1440 berkas semuanya kode "01" = SPEECH
+                  Tidak ada satu pun kode "02" (song).
+                  Jadi hanya bagian ucapan yang dipakai, bukan nyanyian.
+    aktor       : 24 orang
+    kode emosi  : 01 neutral   96 berkas
+                  02 calm     192
+                  03 happy    192
+                  04 sad      192
+                  05 angry    192
+                  06 fear     192
+                  07 disgust  192
+                  08 surprise 192
+
+Pemetaan ke 7 kelas proyek (audio/scripts/organize_audio.py):
+    calm (02) DIGABUNG ke neutral. Jadi neutral dari RAVDESS = 96 + 192 = 288.
+    Semua 8 kode terpakai, tidak ada yang dibuang.
+
+
+B2. CREMA-D
+-----------
+Lokasi   : audio/datasets/crema-d/AudioWAV/
+Isi      : 7442 berkas WAV
+Dipakai  : YA
+
+Pemetaan (audio/scripts/organize_audio.py):
+    ANG=angry, DIS=disgust, FEA=fear, HAP=happy, NEU=neutral, SAD=sad
+
+    CREMA-D TIDAK punya kelas surprise. Ini sebabnya kelas surprise di
+    dataset audio gabungan cuma 192 berkas (dari RAVDESS saja), sementara
+    kelas lain 1375-1463 berkas.
+
+
+B3. Dataset suara gabungan
+--------------------------
+Lokasi : audio/datasets/audio_emotion/
+Dibuat : audio/scripts/organize_audio.py lalu audio/scripts/split_audio.py
+
+    raw/    8882 berkas  = 1440 RAVDESS + 7442 CREMA-D  (cocok persis)
+    train   6216
+    val     1329
+    test    1337
+    Pembagian 70/15/15 acak per kelas, seed 42.
+
+Jumlah per kelas di raw:
+    angry     1463
+    disgust   1463
+    fear      1463
+    happy     1463
+    neutral   1375
+    sad       1463
+    surprise   192   <- RAVDESS saja, ketimpangan 7.62x
+
+Catatan: folder raw/ adalah SUMBER sebelum dipecah, isinya disalin ke
+train/val/test. Jadi jangan menjumlahkan raw + train + val + test, nanti
+terhitung dobel.
+
+
+===============================================================================
+C. RINGKASAN SATU HALAMAN
+===============================================================================
+
+    dataset     modalitas  jumlah mentah  dipakai?  keterangan
+    ---------   ---------  -------------  --------  -----------------------
+    FER2013     wajah      35887 gambar   YA        dataset utama wajah
+    KDEF        wajah       4900 gambar   YA        2936 terpakai (S/HL/HR)
+    AKDEF       wajah         70 gambar   TIDAK     berisiko bocor ke test
+    FERPlus     wajah        (anotasi)    TIDAK     ter-download, tak terpakai
+    RAVDESS     suara       1440 wav      YA        speech saja, 24 aktor
+    CREMA-D     suara       7442 wav      YA        tanpa kelas surprise
+
+
+===============================================================================
+D. YANG BELUM DIKETAHUI - PERLU DICEK SENDIRI
+===============================================================================
+
+Hal-hal berikut TIDAK bisa dipastikan dari isi berkas di komputer ini. Kalau
+laporan butuh angka atau sitasi yang tepat, cek sendiri riwayat unduhan,
+email, atau catatan lama:
+
+1. SUMBER UNDUHAN YANG SEBENARNYA.
+   README.md menyebut beberapa tautan:
+       - RAVDESS  : https://zenodo.org/record/1188976
+       - CREMA-D  : https://github.com/CheyneyComputerScience/CREMA-D
+       - FER2013  : "Kaggle FER2013"
+       - FERPlus  : https://github.com/microsoft/FERPlus
+   Tautan itu adalah catatan yang ditulis sendiri, BUKAN sesuatu yang bisa
+   diverifikasi dari berkasnya. Isi folder tidak menyimpan jejak asal unduhan.
+
+2. FER2013 VERSI MANA.
+   Di Kaggle ada beberapa unggahan FER2013 yang berbeda - ada yang berupa CSV
+   mentah, ada yang sudah jadi folder gambar. Folder ini punya fer2013.csv DAN
+   folder gambar, jadi tidak jelas mana yang diunduh dan mana yang dihasilkan
+   sendiri. Halaman Kaggle persisnya perlu dicek sendiri.
+
+3. KDEF DIUNDUH DARI MANA DAN DENGAN IZIN APA.
+   KDEF/AKDEF disebarkan lewat Karolinska Institutet dan biasanya menuntut
+   persetujuan syarat pemakaian (umumnya: hanya untuk penelitian non-komersial,
+   dan ada aturan soal menampilkan wajah subjek di publikasi). Berkasnya tidak
+   menyimpan informasi lisensi. CEK SENDIRI syarat pemakaiannya sebelum
+   memasang gambar wajah KDEF di laporan atau slide sidang.
+
+4. APAKAH FERPlus PERNAH DIPAKAI.
+   Sekarang tidak terpakai. Tapi git di repo ini cuma punya SATU commit
+   ("Initial commit"), jadi tidak ada riwayat yang bisa ditelusuri. Kalau dulu
+   sempat ada percobaan pakai FERPlus, jejaknya tidak ada di sini.
+
+5. TANGGAL UNDUH tiap dataset - tidak tercatat di mana pun.
+
+6. VERSI CREMA-D. Repo CREMA-D pernah diperbarui beberapa kali. Jumlah 7442
+   berkas cocok dengan rilis penuh, tapi commit/tag persisnya tidak diketahui.
+
+7. (Poin ini sudah terjawab, disimpan sebagai catatan.)
+   Pembagian val/test FER2013 dibuat oleh webcam/scripts/splittingtest.py:
+   test bawaan dipecah 50:50 per kelas dengan random.seed(42), val mengambil
+   separuh pertama dan test separuh sisanya. Kelas berjumlah ganjil membuat
+   test kelebihan 1 berkas - ada 4 kelas ganjil (disgust, neutral, sad,
+   surprise), cocok dengan selisih 3591 - 3587 = 4.
+
+   Satu-satunya ketidakpastian yang tersisa: urutan awal daftar berkas datang
+   dari glob() yang urutannya bergantung sistem berkas, jadi menjalankan ulang
+   di komputer lain belum tentu menghasilkan pembagian yang persis sama.
+   Metodenya jelas, hasil persisnya belum tentu bisa diulang.
