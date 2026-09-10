@@ -1,6 +1,5 @@
 DATASET YANG DIPAKAI
 ====================
-Tugas Akhir - Hasbi Huda Maulaya (140910220045)
 Multimodal Emotion Recognition (wajah + suara) + respons robot AiNex
 
 Disusun: 10 September 2026

@@ -125,6 +125,14 @@ GRAYSCALE_INPUT = True
 # di docstring paling atas.
 NO_COMPOUND = ('neutral',)
 
+# Respons robot (lambaian tangan saat 'happy') DIMATIKAN.
+# Untuk menghidupkannya kembali ada DUA langkah:
+#   1. ubah baris ini jadi True
+#   2. hapus tanda '#' pada blok "RESPONS ROBOT DIMATIKAN SEMENTARA"
+#      di dalam loop utama (cari kata WAVE_ENABLED)
+# Kalau cuma salah satu, lambaian tetap tidak jalan.
+WAVE_ENABLED = False
+
 SR = 16000
 DURATION = 3
 N_MFCC = 40
@@ -843,10 +851,13 @@ def main(argv=None):
         method=args.wave_method,
         cooldown=args.wave_cooldown,
         timeout=args.wave_timeout,
-        enabled=not args.no_wave,
+        enabled=not args.no_wave and WAVE_ENABLED,
         token=args.wave_token,
     )
-    if args.no_wave:
+    if not WAVE_ENABLED:
+        print("[robot] Respons robot DIMATIKAN di kode "
+              "(WAVE_ENABLED = False di bagian KONFIGURASI).")
+    elif args.no_wave:
         print("[robot] Respons robot DIMATIKAN (--no_wave).")
     elif args.wave_url is None:
         print("[robot] Mode dry-run: setiap 'happy' hanya cetak '[ROBOT] WAVE!' "
@@ -943,12 +954,19 @@ def main(argv=None):
             fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev_t, 1e-6))
             prev_t = now
 
-            # Respons robot: lambai kalau ekspresi TUNGGAL & top-1 = happy.
+            # ----------------------------------------------------------------
+            # RESPONS ROBOT DIMATIKAN SEMENTARA
+            # ----------------------------------------------------------------
+            # Untuk menghidupkan lagi: hapus tanda '#' pada tiga baris di bawah,
+            # DAN ubah WAVE_ENABLED jadi True di bagian KONFIGURASI paling atas.
+            #
+            # Perilakunya: lambai kalau ekspresi TUNGGAL & top-1 = happy.
             # Kondisi TUNGGAL memastikan tidak memicu pada ekspresi majemuk
             # (misal happy-surprise) atau saat model tidak yakin.
-            if (result['type'] == 'TUNGGAL'
-                    and EMOTIONS[result['c1']] == 'happy'):
-                robot.trigger_wave()
+            #
+            # if (result['type'] == 'TUNGGAL'
+            #         and EMOTIONS[result['c1']] == 'happy'):
+            #     robot.trigger_wave()
 
             frame = draw_overlay(frame, p_visual, p_audio, p_final,
                                  result, ALPHA, TAU, fps, worker.audio_level, face_box,

@@ -3,6 +3,10 @@ Real-time multimodal emotion recognition:
 YOLO (wajah, FER2013) + CNN-MFCC (audio, RAVDESS + CREMA-D) → decision-level fusion.
 Termasuk respons robot AiNex Hiwonder (lambaian tangan pada ekspresi *happy*).
 
+> **Respons lambaian sedang DIMATIKAN.** Kodenya masih lengkap, tapi pemicunya
+> dikomentari supaya sistem hanya mengenali ekspresi tanpa menggerakkan robot.
+> Cara menghidupkannya ada di bagian [Respons robot: sisi robot](#respons-robot-sisi-robot).
+
 
 ## Struktur
 
@@ -65,7 +69,31 @@ python fusion_webcam.py \
 Tanpa `--wave_url`, sistem cetak `[ROBOT] WAVE!` ke konsol (dry-run).
 Cooldown lambaian default 60 detik, ubah dengan `--wave_cooldown DETIK`.
 
+Catatan: selama respons lambaian dimatikan, `--wave_url` dan `--wave_token`
+tetap diterima tapi tidak berpengaruh - tidak ada request yang dikirim.
+
 ## Respons robot: sisi robot
+
+### Status: DIMATIKAN
+
+Pemicu lambaian di `fusion_webcam.py` sedang dikomentari, jadi sistem tidak
+mengirim apa pun ke robot. Saat dijalankan, konsol mencetak:
+
+```
+[robot] Respons robot DIMATIKAN di kode (WAVE_ENABLED = False di bagian KONFIGURASI).
+```
+
+Untuk menghidupkannya lagi perlu **dua langkah** di `fusion_webcam.py`:
+
+1. ubah `WAVE_ENABLED = False` jadi `True` di bagian KONFIGURASI paling atas
+2. hapus tanda `#` pada blok `RESPONS ROBOT DIMATIKAN SEMENTARA` di dalam loop
+   utama (tiga baris yang memanggil `robot.trigger_wave()`)
+
+Kalau cuma salah satu yang dikerjakan, lambaian tetap tidak jalan. Indikator
+`ROBOT:` di overlay juga ikut disembunyikan selama `WAVE_ENABLED` masih `False`,
+supaya tampilannya tidak menyesatkan.
+
+Sisa dokumentasi di bawah ini berlaku setelah lambaian dihidupkan kembali.
 
 `--wave_url` menunjuk ke server kecil yang harus jalan **di robot**. Server itu
 ada di `Servers/ainex_wave_server.py`. Salin ke Raspberry Pi robot, lalu:

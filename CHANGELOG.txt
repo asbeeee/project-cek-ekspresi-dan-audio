@@ -1,10 +1,12 @@
 CATATAN PERUBAHAN
 =================
-Sejak commit terakhir di GitHub:
+Mencatat pekerjaan tanggal 10 September 2026, yaitu semua perubahan setelah:
     4de7f28  "Initial commit: multimodal emotion fusion + AiNex robot response"
     9 September 2026, 14:34 WIB
 
-Ditulis: 10 September 2026
+Sudah masuk dua commit:
+    b04445c  isi bagian 1-8 di bawah
+    (commit ini)  bagian 10
 
 
 ===============================================================================
@@ -240,3 +242,35 @@ UBAH  .gitignore
 
 - Kelas surprise di dataset audio cuma 192 sampel (CREMA-D tidak punya kelas
   surprise). Ketimpangan 7.62x ini belum ditangani.
+
+
+===============================================================================
+10. RESPONS LAMBAIAN DIMATIKAN
+===============================================================================
+
+UBAH  fusion_webcam.py
+      Pemicu lambaian di loop utama dikomentari, jadi sistem hanya mengenali
+      ekspresi tanpa menggerakkan robot.
+
+      Ditambah juga konstanta WAVE_ENABLED = False di bagian KONFIGURASI.
+      Alasannya: kalau cuma pemicunya yang dikomentari, indikator "ROBOT: siap
+      lambai" di overlay dan pesan "[robot] Wave -> POST ..." saat start tetap
+      muncul, karena keduanya bergantung pada robot.enabled - bukan pada apakah
+      pemicunya benar-benar jalan. Tampilannya jadi menyesatkan.
+
+      Menghidupkan lagi perlu DUA langkah: ubah WAVE_ENABLED jadi True, DAN
+      hapus tanda '#' pada blok pemicunya. Keduanya sudah ditulis di komentar
+      masing-masing.
+
+      Tidak ada yang dihapus. RobotController, --wave_url, --wave_token, dan
+      Servers/ainex_wave_server.py masih utuh, cuma tidak pernah dipanggil.
+
+UBAH  README.md - status "DIMATIKAN" ditulis di bagian atas dan di bagian
+      "Respons robot: sisi robot", lengkap dengan cara menghidupkannya.
+
+UBAH  DATASETS.txt - baris nama dan NIM dihapus, menyesuaikan dengan
+      penghapusan data pribadi yang sudah dilakukan di README.md.
+
+      CATATAN: nama dan NIM masih ada di docstring fusion_webcam.py baris 9 dan
+      fusion/fusion_test_webcam.py baris 9. Keduanya bawaan commit pertama,
+      belum diubah - putuskan sendiri mau dihapus atau tidak.
