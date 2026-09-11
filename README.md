@@ -176,6 +176,24 @@ Yang perlu diketahui:
 - Empat berkas KDEF asli isinya hitam polos dan otomatis dibuang; dua berkas
   bernama salah (`AF31V`, `AM31H`) diperbaiki lewat tabel errata di skrip.
 
+## Gambar hasil untuk laporan
+
+```bash
+python results_figures.py          # PNG
+python results_figures.py --jpg    # PNG + JPG
+```
+
+Menghasilkan dua gambar di `results/`:
+
+- `figur_model_wajah.png` - baseline vs gabungan di kedua test set, F1 per kelas,
+  dan dua confusion matrix. Perbedaan yang tidak signifikan ditandai `n.s.`
+  (uji McNemar pada sampel berpasangan).
+- `figur_fusion.png` - perbandingan wajah / audio / fusion, sapuan bobot alpha,
+  dan confusion matrix fusion.
+
+Membaca probabilitas dari `results/cache/`, jadi kalau cache-nya sudah ada,
+gambarnya jadi dalam hitungan detik tanpa inferensi ulang.
+
 ## Gabungan FER2013 + KDEF
 
 ```bash

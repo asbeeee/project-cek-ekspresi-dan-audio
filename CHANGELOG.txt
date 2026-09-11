@@ -380,3 +380,31 @@ BERSIH  __pycache__/ dan *.cache dihapus dari disk.
       menyisakan fusion_webcam.py dan results_calculation.py, keduanya jalur
       inferensi, bukan training.
 
+11f. results_figures.py - hasil dalam bentuk gambar
+----------------------------------------------------
+BARU  results_figures.py
+      Merender hasil evaluasi jadi dua PNG/JPG siap tempel ke laporan, bukan
+      lagi cuma keluaran terminal.
+
+      Bentuk grafik dipilih menurut tugas datanya, bukan selera:
+        - sebelum/sesudah per item -> dumbbell, satu hue biru dua shade
+        - dua metrik berdampingan  -> batang berkelompok, biru + oranye
+        - magnitudo dalam grid     -> heatmap, satu hue biru 100->700
+        - tren terhadap parameter  -> garis satu seri (tanpa legenda)
+
+      Paletnya diambil dari palet rujukan yang sudah divalidasi dan dicek ulang
+      dengan validator: pasangan kategorikal biru/oranye lolos semua gate
+      (CVD Delta E 24.7), pasangan shade biru lolos gate ordinal.
+
+      Gambarnya diperiksa dengan mata setelah dirender, bukan cuma dianggap
+      benar karena kodenya jalan. Empat masalah tata letak ketemu dan
+      diperbaiki: judul panel kanan terpotong, legenda menutupi label nilai,
+      keterangan puncak menimpa kurva dan judul, serta dua titik dumbbell yang
+      saling menutupi waktu nilainya nyaris sama.
+
+      Satu keputusan dibatalkan setelah dilihat hasilnya: rencana memakai
+      'emphasis' (fusion berwarna, sisanya abu-abu) ternyata membuat batang
+      abu-abunya terlihat lebih berat daripada yang mau ditonjolkan. Diganti
+      jadi dua warna kategorikal biasa - panjang batangnya sendiri sudah cukup
+      menunjukkan fusion menang.
+
