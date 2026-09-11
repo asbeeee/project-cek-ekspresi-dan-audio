@@ -350,3 +350,33 @@ BERSIH  __pycache__/ dan *.cache dihapus dari disk.
       Ini menyelesaikan dua poin di bagian 9: device terkunci cpu dan
       workers=0 sekarang bisa diatur dari argumen.
 
+11e. train_audio_cnn.py disamakan dengan training_yolo_.py
+-----------------------------------------------------------
+      Dulu: langsung melatih begitu dijalankan, dan EPOCHS / BATCH / DEVICE
+      harus diubah dengan mengedit isi berkasnya.
+
+      Sekarang: argparse penuh, `--help` aman, dan training baru mulai kalau
+      diberi --yes. Argumen: --data --out --epochs --batch --lr --workers
+      --device. Pesan saat --yes kelupaan menampilkan perintah lengkap yang
+      tinggal disalin, sudah termasuk argumen yang barusan dipakai.
+
+      --device default 'auto', jadi memakai GPU kalau ada. Dulu terkunci 'cpu'.
+      Nilainya 'cuda'/'cpu' untuk torch, beda dengan ultralytics yang memakai
+      indeks '0'.
+
+      --workers diukur langsung di mesin ini, memuat 1024 sampel:
+          workers 0 : 12.8 detik
+          workers 4 : 10.4 detik   <- paling cepat
+          workers 8 : 18.1 detik
+      Windows memakai spawn, bukan fork, jadi ongkos membuat proses besar dan
+      worker yang terlalu banyak malah memperlambat. Angka ini menggantikan
+      saran awal "--workers 8" yang ternyata salah.
+
+      Perilaku penyimpanan tidak berubah: bobot ditimpa tiap kali val accuracy
+      membaik, jadi best_audio_cnn.pt selalu model terbaik. Perlu diingat latih
+      ulang MENIMPA model yang sekarang dipakai - pakai --out kalau tidak mau.
+
+      Dengan ini bagian 9 soal 'skrip lama mengunci device=cpu' tinggal
+      menyisakan fusion_webcam.py dan results_calculation.py, keduanya jalur
+      inferensi, bukan training.
+

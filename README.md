@@ -287,12 +287,31 @@ Hasil training mendarat di `runs/classify/runs/emotion/<name>/` yang ada di
 `.gitignore`. Salin model yang mau dipakai ke `webcam/models/` supaya ikut
 tersimpan di git.
 
-### Audio CNN
+### Audio CNN - BUTUH `--yes` juga
 
 ```bash
-python audio/scripts/train_audio_cnn.py
+python audio/scripts/train_audio_cnn.py --yes
 ```
 
-Skrip ini belum punya argparse, jadi langsung melatih begitu dijalankan.
-Atur `EPOCHS`, `BATCH`, dan `DEVICE` di bagian KONFIGURASI di dalam berkasnya.
-`DEVICE` masih `'cpu'`; ganti ke `0` kalau mau memakai GPU.
+Sama seperti skrip YOLO: tanpa `--yes` cuma mencetak rencana lalu berhenti,
+dan pesannya menampilkan perintah lengkap yang tinggal disalin.
+
+```bash
+python audio/scripts/train_audio_cnn.py --yes   --epochs 50 --batch 64 --workers 4
+```
+
+`--device` default `auto` (dulu terkunci `'cpu'`). Soal `--workers`: MFCC
+dihitung di CPU tiap kali sampel dimuat, jadi worker tambahan memang membantu,
+tapi Windows memakai spawn sehingga terlalu banyak worker malah rugi. Diukur
+di mesin ini untuk 1024 sampel:
+
+| workers | waktu |
+|---------|-------|
+| 0       | 12.8s |
+| 4       | 10.4s |
+| 8       | 18.1s |
+
+Bobot ditimpa tiap kali val accuracy membaik, jadi `best_audio_cnn.pt` selalu
+berisi model terbaik - bukan epoch terakhir. Latih ulang akan MENIMPA model
+yang sekarang dipakai; simpan dulu salinannya, atau arahkan ke berkas lain
+dengan `--out`.
