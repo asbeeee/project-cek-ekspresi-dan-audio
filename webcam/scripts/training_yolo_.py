@@ -6,13 +6,18 @@ Akibatnya salah ketik sedikit saja - termasuk `--help` - langsung memulai
 training 20 epoch yang makan berjam-jam di CPU. Sekarang ada argparse, jadi
 `--help` benar-benar cuma menampilkan bantuan, dan perlu `--yes` untuk mulai.
 
+PERLU DIINGAT: tanpa --yes skrip ini cuma mencetak rencananya lalu berhenti.
+Kalau merasa "kok tidak jalan", kemungkinan besar --yes-nya yang kelupaan.
+
 Contoh:
-    python webcam/scripts/training_yolo_.py --help
-    python webcam/scripts/training_yolo_.py --yes
+    python webcam/scripts/training_yolo_.py          # cetak rencana, berhenti
+    python webcam/scripts/training_yolo_.py --help   # bantuan, aman
+    python webcam/scripts/training_yolo_.py --yes    # benar-benar melatih
     python webcam/scripts/training_yolo_.py --yes --epochs 30 --batch 64
     python webcam/scripts/training_yolo_.py --yes --data webcam/datasets/combined
 """
 import argparse
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -76,7 +81,17 @@ def main():
     print(f"[rencana] name    : {args.name}")
 
     if not args.yes:
-        print("\nTraining TIDAK dijalankan. Tambahkan --yes kalau memang mau mulai.")
+        # Tampilkan perintah lengkapnya supaya tinggal disalin, tidak perlu
+        # mengetik ulang argumen yang barusan dipakai.
+        perintah = " ".join(["python webcam/scripts/training_yolo_.py", "--yes"]
+                            + sys.argv[1:])
+        print()
+        print("Training TIDAK dijalankan - skrip ini butuh --yes.")
+        print("Itu disengaja: versi lama langsung melatih begitu dijalankan,")
+        print("jadi salah ketik sedikit pun memulai training berjam-jam.")
+        print()
+        print("Salin perintah ini untuk benar-benar mulai:")
+        print("  " + perintah)
         return
 
     from ultralytics import YOLO

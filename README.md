@@ -249,12 +249,50 @@ orang yang sama - batasan ini perlu disebut di laporan.
 
 ## Training ulang
 
-Audio CNN:
+### YOLO klasifikasi wajah - BUTUH `--yes`
+
+```bash
+python webcam/scripts/training_yolo_.py --yes
+```
+
+**Tanpa `--yes`, skrip cuma mencetak rencananya lalu berhenti.** Ini disengaja:
+versi lama langsung melatih begitu dijalankan tanpa argumen apa pun, sehingga
+salah ketik sedikit - `--help` sekalipun - langsung memulai training 20 epoch
+yang makan berjam-jam. Sekarang perlu konfirmasi eksplisit.
+
+Jadi kalau menjalankannya dan keluarannya seperti ini, tidak ada yang rusak,
+memang tinggal menambahkan `--yes`:
+
+```
+[rencana] data    : .../webcam/datasets/fer2013
+[rencana] epochs  : 20, batch 32, imgsz 224, workers 0
+[rencana] device  : 0
+
+Training TIDAK dijalankan. Tambahkan --yes kalau memang mau mulai.
+```
+
+Argumen yang sering dipakai:
+
+```bash
+# latih di dataset gabungan, pakai GPU, pemuat data diperbanyak
+python webcam/scripts/training_yolo_.py --yes   --data webcam/datasets/combined --name merged_baseline   --epochs 20 --batch 64 --workers 8
+
+python webcam/scripts/training_yolo_.py --help   # aman, cuma bantuan
+```
+
+`--device` default `auto`, jadi GPU dipakai otomatis kalau ada. `--workers 0`
+(default lama) membuat GPU banyak menganggur; naikkan kalau memakai GPU.
+
+Hasil training mendarat di `runs/classify/runs/emotion/<name>/` yang ada di
+`.gitignore`. Salin model yang mau dipakai ke `webcam/models/` supaya ikut
+tersimpan di git.
+
+### Audio CNN
+
 ```bash
 python audio/scripts/train_audio_cnn.py
 ```
 
-YOLO klasifikasi wajah:
-```bash
-python webcam/scripts/training_yolo_.py
-```
+Skrip ini belum punya argparse, jadi langsung melatih begitu dijalankan.
+Atur `EPOCHS`, `BATCH`, dan `DEVICE` di bagian KONFIGURASI di dalam berkasnya.
+`DEVICE` masih `'cpu'`; ganti ke `0` kalau mau memakai GPU.
