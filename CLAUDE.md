@@ -26,7 +26,15 @@ inferensi, dan skrip cek - semuanya selesai dalam hitungan menit.
   epoch. Pakai `--device auto` / `device=0` kalau menulis skrip training baru.
 - Ultralytics menyimpan hasil di `runs/classify/<project>/<name>/`, bukan
   persis di `project=` yang dioper. Jadi `project='runs/emotion'` mendarat di
-  `runs/classify/runs/emotion/<name>/`.
+  `runs/classify/runs/emotion/<name>/`. Folder `runs/` ada di `.gitignore`;
+  model yang benar-benar dipakai disalin ke `webcam/models/<nama>/`.
+- Definisi yang dipakai bersama (EMOTIONS, EMOTIONS_ID, arsitektur AudioCNN,
+  parameter MFCC) ada di `common.py` di root. Jangan menulis ulang di skrip
+  lain - arsitektur AudioCNN khususnya harus sama persis antara skrip yang
+  melatih dan skrip yang memuat bobot. Skrip di subfolder perlu menambahkan
+  root ke sys.path dulu, lihat `audio/scripts/train_audio_cnn.py`.
+- Skrip lama yang sudah digantikan ada di `archive/` (gitignored), penjelasan
+  tiap berkas di `archive/README.txt`.
 - Dataset besar tidak ikut di git (lihat `.gitignore`). Semua path di skrip
   memakai `Path(__file__)`, jangan hardcode drive `E:\`.
 - Komentar dan output skrip di repo ini memakai bahasa Indonesia.

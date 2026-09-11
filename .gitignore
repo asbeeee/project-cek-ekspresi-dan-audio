@@ -42,3 +42,9 @@ results/cache/
 # Model pretrained nyasar hasil unduhan otomatis ultralytics di root
 # (versi resminya sudah ada di webcam/models/yolo26n.pt)
 /yolo26n.pt
+
+# Keluaran mentah ultralytics; model yang dipakai disalin ke webcam/models/
+runs/
+
+# Skrip lama yang sudah digantikan, lihat archive/README.txt
+archive/

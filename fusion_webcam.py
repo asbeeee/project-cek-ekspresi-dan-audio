@@ -76,8 +76,9 @@ from urllib.request import Request, urlopen
 import cv2
 import numpy as np
 import torch
-import torch.nn as nn
 from ultralytics import YOLO
+
+from common import EMOTIONS, EMOTIONS_ID, SR, DURATION, N_MFCC, load_audio_cnn
 
 # Impor audio dibuat opsional supaya --no_speech tetap jalan
 # di mesin yang tidak punya sounddevice / librosa / mikrofon.
@@ -105,12 +106,8 @@ BASE_DIR = Path(__file__).resolve().parent
 VISUAL_MODEL_PATH = str(BASE_DIR / "webcam" / "models" / "fer2013_baseline-2" / "weights" / "best.pt")
 AUDIO_MODEL_PATH = str(BASE_DIR / "audio" / "models" / "best_audio_cnn.pt")
 
-EMOTIONS = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
-EMOTIONS_ID = {
-    'angry': 'Marah', 'disgust': 'Jijik', 'fear': 'Takut',
-    'happy': 'Senang', 'neutral': 'Netral', 'sad': 'Sedih',
-    'surprise': 'Terkejut'
-}
+# EMOTIONS, EMOTIONS_ID, SR, DURATION, N_MFCC, dan model audio diimpor dari
+# common.py supaya definisinya cuma ada di satu tempat.
 
 ALPHA = 0.6
 TAU = 0.20
@@ -133,9 +130,6 @@ NO_COMPOUND = ('neutral',)
 # Kalau cuma salah satu, lambaian tetap tidak jalan.
 WAVE_ENABLED = False
 
-SR = 16000
-DURATION = 3
-N_MFCC = 40
 AUDIO_INFER_INTERVAL = 1.0
 
 DEVICE = 'cpu'
@@ -143,24 +137,8 @@ FACE_PAD = 0.20
 
 
 # ===================================================================
-# MODEL AUDIO
+# PEKERJA AUDIO
 # ===================================================================
-class AudioCNN(nn.Module):
-    def __init__(self, n_classes=7):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(1, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU(), nn.MaxPool2d(2),
-            nn.AdaptiveAvgPool2d(1), nn.Flatten(),
-            nn.Linear(128, 64), nn.ReLU(), nn.Dropout(0.3),
-            nn.Linear(64, n_classes)
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
 class AudioWorker:
     def __init__(self, model):
         self.model = model
@@ -836,9 +814,7 @@ def main(argv=None):
             print("       Atau jalankan dengan --no_speech")
             return 1
         print("[3/%d] Load model audio (CNN-MFCC)..." % total)
-        audio_model = AudioCNN(len(EMOTIONS)).to(DEVICE)
-        audio_model.load_state_dict(torch.load(args.audio_model, map_location=DEVICE))
-        audio_model.eval()
+        audio_model = load_audio_cnn(args.audio_model, DEVICE)
         worker = AudioWorker(audio_model)
 
     print("[%d/%d] Siapkan sumber gambar..." % (total, total))

@@ -1,33 +1,23 @@
-import numpy as np
-import librosa
+import sys
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from pathlib import Path
+
+# audio/scripts/<berkas ini> -> root proyek ada di parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
+from common import EMOTIONS, make_audio_cnn, load_wav_mfcc
 
 # ── KONFIGURASI ──────────────────────────────
-# audio/scripts/<this file> -> project root is parents[2]
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# EMOTIONS dan arsitektur model diimpor dari common.py
+# supaya arsitekturnya tidak pernah berbeda dengan skrip yang memuat bobotnya.
 DATA_DIR = PROJECT_ROOT / "audio" / "datasets" / "audio_emotion"
-EMOTIONS = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
-SR = 16000          # sampling rate (sesuai proposal: 16 kHz)
-DURATION = 3        # detik (dipotong/dipad ke 3 detik)
-N_MFCC = 40         # jumlah koefisien MFCC
 EPOCHS = 30
 BATCH = 32
 DEVICE = 'cpu'      # ganti 0 / 'cuda' kalau ada GPU
 # ─────────────────────────────────────────────
-
-def extract_mfcc(path):
-    """Ekstrak MFCC dari file audio, hasil shape konsisten"""
-    y, sr = librosa.load(path, sr=SR)
-    target_len = SR * DURATION
-    if len(y) < target_len:
-        y = np.pad(y, (0, target_len - len(y)))
-    else:
-        y = y[:target_len]
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=N_MFCC)
-    return mfcc.astype(np.float32)   # shape: (40, 94)
 
 class AudioDataset(Dataset):
     def __init__(self, split):
@@ -44,23 +34,8 @@ class AudioDataset(Dataset):
     
     def __getitem__(self, i):
         path, label = self.samples[i]
-        mfcc = extract_mfcc(path)
+        mfcc = load_wav_mfcc(path)
         return torch.tensor(mfcc).unsqueeze(0), label  # (1, 40, 94)
-
-class AudioCNN(nn.Module):
-    def __init__(self, n_classes=7):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(1, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(), nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU(), nn.MaxPool2d(2),
-            nn.AdaptiveAvgPool2d(1), nn.Flatten(),
-            nn.Linear(128, 64), nn.ReLU(), nn.Dropout(0.3),
-            nn.Linear(64, n_classes)
-        )
-    
-    def forward(self, x):
-        return self.net(x)
 
 def evaluate(model, loader):
     model.eval()
@@ -80,7 +55,7 @@ if __name__ == '__main__':
     train_dl = DataLoader(train_ds, batch_size=BATCH, shuffle=True, num_workers=0)
     val_dl = DataLoader(val_ds, batch_size=BATCH, num_workers=0)
     
-    model = AudioCNN(len(EMOTIONS)).to(DEVICE)
+    model = make_audio_cnn(len(EMOTIONS)).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.CrossEntropyLoss()
     

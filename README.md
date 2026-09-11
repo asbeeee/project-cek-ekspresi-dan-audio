@@ -13,20 +13,34 @@ Termasuk respons robot AiNex Hiwonder (lambaian tangan pada ekspresi *happy*).
 ```
 .
 ├── fusion_webcam.py           # entry point: fusion realtime + kontrol robot
+├── common.py                  # EMOTIONS, arsitektur AudioCNN, parameter MFCC
+├── results_calculation.py     # accuracy / precision / recall / F1
 ├── requirements.txt
+├── DATASETS.txt               # rincian dataset yang dipakai
+├── CHANGELOG.txt              # catatan perubahan
 ├── audio/
 │   ├── scripts/               # organize, split, train audio CNN
-│   └── models/                # best_audio_cnn.pt
+│   ├── models/                # best_audio_cnn.pt
+│   └── datasets/              # ravdess, crema-d, audio_emotion (tidak di git)
 ├── webcam/
-│   ├── scripts/               # training YOLO + tes webcam
+│   ├── scripts/               # kdefTrain, merge_datasets, recheck, training
 │   ├── models/                # yolo pretrained + fer2013_baseline-2/
-│   └── results/               # confusion matrix, val runs
-├── fusion/                    # skrip fusion versi lama (test)
-└── Servers/                   # requirements untuk laptop server
+│   │                          #   + merged_baseline/
+│   ├── results/               # confusion matrix, val runs
+│   └── datasets/              # fer2013, kdef, combined (tidak di git)
+├── results/                   # metrics_*.csv dan confusion_*.csv
+├── Servers/                   # ainex_wave_server.py + requirements laptop
+└── archive/                   # skrip lama (tidak di git, lihat README di dalamnya)
 ```
 
 Semua path di dalam skrip memakai `Path(__file__)`, jadi tidak ada
 hardcoded drive `E:\` - repo bisa di-clone ke laptop mana pun.
+
+Definisi yang dipakai bersama - daftar `EMOTIONS`, arsitektur `AudioCNN`, dan
+parameter MFCC - ada di `common.py`. Arsitektur AudioCNN khususnya harus sama
+persis antara skrip yang melatih dan yang memuat bobot, jadi definisinya
+sengaja cuma ada di satu tempat. Skrip di dalam subfolder menambahkan root ke
+`sys.path` dulu sebelum mengimpornya.
 
 ## Datasets (tidak ikut di repo)
 

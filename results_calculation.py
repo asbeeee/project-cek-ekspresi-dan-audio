@@ -37,9 +37,9 @@ from pathlib import Path
 
 import numpy as np
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+from common import EMOTIONS, load_audio_cnn, load_wav_mfcc
 
-EMOTIONS = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
+PROJECT_ROOT = Path(__file__).resolve().parent
 
 FER_DIR = PROJECT_ROOT / "webcam" / "datasets" / "fer2013"
 AUDIO_DIR = PROJECT_ROOT / "audio" / "datasets" / "audio_emotion"
@@ -49,11 +49,6 @@ OUT_DIR = PROJECT_ROOT / "results"
 CACHE_DIR = OUT_DIR / "cache"
 
 IMG_EXT = {'.jpg', '.jpeg', '.png', '.bmp'}
-
-# Parameter audio, sama persis dengan train_audio_cnn.py dan fusion_webcam.py.
-SR = 16000
-DURATION = 3
-N_MFCC = 40
 
 # Parameter fusion, default sama dengan fusion_webcam.py.
 ALPHA = 0.6
@@ -324,44 +319,22 @@ def infer_visual(split, model_path, imgsz=224, batch=64, data=None, prefix=None)
 def infer_audio(split, model_path, batch=32):
     """Kembalikan (probs [N,7] urut EMOTIONS, labels [N])."""
     import torch
-    import torch.nn as nn
-    import librosa
 
     if not Path(model_path).exists():
         raise SystemExit(f"ERROR: bobot audio tidak ada: {model_path}")
 
-    # Arsitektur harus identik dengan train_audio_cnn.py, kalau tidak
-    # state_dict-nya gagal dimuat.
-    model = nn.Sequential(
-        nn.Conv2d(1, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(), nn.MaxPool2d(2),
-        nn.Conv2d(32, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(), nn.MaxPool2d(2),
-        nn.Conv2d(64, 128, 3, padding=1), nn.BatchNorm2d(128), nn.ReLU(), nn.MaxPool2d(2),
-        nn.AdaptiveAvgPool2d(1), nn.Flatten(),
-        nn.Linear(128, 64), nn.ReLU(), nn.Dropout(0.3),
-        nn.Linear(64, len(EMOTIONS)),
-    )
-    # Bobot disimpan dari modul yang membungkus Sequential dalam atribut .net,
-    # jadi prefix 'net.' dibuang dulu.
-    sd = torch.load(model_path, map_location=DEVICE)
-    sd = {k[4:] if k.startswith('net.') else k: v for k, v in sd.items()}
-    model.load_state_dict(sd)
-    model.to(DEVICE).eval()
+    model = load_audio_cnn(model_path, DEVICE)
 
     sampel = kumpulkan_sampel(AUDIO_DIR, split, {'.wav'})
     print(f"[audio] {len(sampel)} file dari {AUDIO_DIR / split}")
 
     probs = np.zeros((len(sampel), len(EMOTIONS)), dtype=np.float32)
     labels = np.array([lbl for _, lbl in sampel], dtype=np.int64)
-    panjang = SR * DURATION
 
     t0 = time.time()
     for mulai in range(0, len(sampel), batch):
         potong = sampel[mulai:mulai + batch]
-        fitur = []
-        for path, _ in potong:
-            y, _sr = librosa.load(path, sr=SR)
-            y = np.pad(y, (0, panjang - len(y))) if len(y) < panjang else y[:panjang]
-            fitur.append(librosa.feature.mfcc(y=y, sr=SR, n_mfcc=N_MFCC).astype(np.float32))
+        fitur = [load_wav_mfcc(path) for path, _ in potong]
         x = torch.tensor(np.stack(fitur)).unsqueeze(1).to(DEVICE)
         with torch.no_grad():
             probs[mulai:mulai + len(potong)] = torch.softmax(model(x), dim=1).cpu().numpy()

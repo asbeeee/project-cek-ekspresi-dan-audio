@@ -126,9 +126,9 @@ BARU  webcam/scripts/merge_datasets.py
       Ketimpangan kelas turun dari 16.36x jadi 5.64x.
       disgust di train naik dari 436 jadi 1580 gambar.
 
-BARU  runs/classify/runs/emotion/merged_baseline/
+BARU  webcam/models/merged_baseline/
       Model hasil latih gabungan, 20 epoch, RTX 4060, sekitar 50 menit.
-      Bobot: runs/classify/runs/emotion/merged_baseline/weights/best.pt
+      Bobot: webcam/models/merged_baseline/weights/best.pt
       (best.pt dan last.pt isinya identik, epoch terbaik = epoch terakhir)
 
       Hasil, diukur di test set masing-masing sumber secara TERPISAH:
@@ -274,3 +274,79 @@ UBAH  DATASETS.txt - baris nama dan NIM dihapus, menyesuaikan dengan
       CATATAN: nama dan NIM masih ada di docstring fusion_webcam.py baris 9 dan
       fusion/fusion_test_webcam.py baris 9. Keduanya bawaan commit pertama,
       belum diubah - putuskan sendiri mau dihapus atau tidak.
+
+
+===============================================================================
+11. PEMBERSIHAN DAN PENATAAN (11 September 2026)
+===============================================================================
+
+11a. Kode berulang dipindah ke common.py
+-----------------------------------------
+BARU  common.py
+      EMOTIONS, EMOTIONS_ID, parameter MFCC (SR/DURATION/N_MFCC), arsitektur
+      AudioCNN, dan helper MFCC. Sebelumnya:
+          EMOTIONS       ditulis ulang di 5 berkas
+          AudioCNN       ditulis ulang di 3 berkas
+          SR/DURATION/N_MFCC   di 3 berkas
+          ekstraksi MFCC       di 3 berkas
+
+      Yang paling berbahaya AudioCNN: arsitekturnya harus identik antara skrip
+      yang melatih dan yang memuat bobot. results_calculation.py bahkan sempat
+      memakai nn.Sequential polos dan harus membuang prefix 'net.' sendiri dari
+      state_dict - beda jalur untuk hal yang sama.
+
+      Impor torch ditaruh di dalam fungsi, jadi skrip yang cuma butuh EMOTIONS
+      (merge_datasets.py) tidak ikut menunggu torch dimuat.
+
+      Diverifikasi: metrik SEBELUM dan SESUDAH refactor sama persis.
+          wajah   accuracy 0.6811   macro-F1 0.6547
+          audio   accuracy 0.5939   macro-F1 0.6096
+
+11b. Berkas dan folder duplikat dihapus
+----------------------------------------
+      webcam/datasets/fer2013/splittingtest.py
+          identik byte-per-byte dengan webcam/scripts/splittingtest.py
+      yolo26n.pt di root
+          identik dengan webcam/models/yolo26n.pt
+      webcam/results/classify/runs/emotion/fer2013_baseline-2/
+          identik dengan webcam/models/fer2013_baseline-2/, dan KEDUANYA
+          terlacak git - jadi bobot yang sama tersimpan dua kali
+      webcam/results/classify/runs/emotion/fer2013_baseline/
+          run yang gagal, cuma berisi args.yaml dengan weights/ kosong
+      webcam/results/classify/val-2/
+          identik dengan val/
+      results/metrics_face_test.csv dan confusion_face_test.*
+          duplikat dari face_base_fer_test, sisa sebelum ada --tag
+
+11c. Struktur folder
+---------------------
+PINDAH  runs/classify/runs/emotion/merged_baseline/ -> webcam/models/merged_baseline/
+        Sekarang sejajar dengan fer2013_baseline-2. Folder runs/ dimasukkan ke
+        .gitignore karena itu keluaran mentah ultralytics; model yang benar-benar
+        dipakai disalin ke webcam/models/.
+
+BARU    archive/ (gitignored, ada README.txt di dalamnya)
+        Empat skrip yang sudah digantikan dipindah ke sini, namanya dirapikan
+        dan PROJECT_ROOT-nya disesuaikan supaya tetap bisa dijalankan:
+            webcam/scripts/TEST (last).py  -> archive/test_yolo_fer2013.py
+            webcam/scripts/webcamTest.py   -> archive/webcam_test.py
+            audio/scripts/check_crema-d.py -> archive/check_crema_d.py
+            fusion/fusion_test_webcam.py   -> archive/fusion_test_webcam.py
+        Folder fusion/ jadi kosong dan ikut dihapus.
+
+BERSIH  __pycache__/ dan *.cache dihapus dari disk.
+
+11d. training_yolo_.py diberi argparse
+---------------------------------------
+      Versi lama langsung melatih begitu dijalankan, tanpa argumen apa pun.
+      Artinya salah ketik sedikit - termasuk `--help` - langsung memulai
+      training 20 epoch. Ini benar-benar terjadi saat pembersihan ini dan
+      harus dihentikan di tengah jalan.
+
+      Sekarang: ada argparse, `--help` aman, dan training baru mulai kalau
+      diberi --yes. Tambahan --device auto (dulu terkunci 'cpu' padahal ada
+      RTX 4060), --epochs, --batch, --workers, --data, --name.
+
+      Ini menyelesaikan dua poin di bagian 9: device terkunci cpu dan
+      workers=0 sekarang bisa diatur dari argumen.
+

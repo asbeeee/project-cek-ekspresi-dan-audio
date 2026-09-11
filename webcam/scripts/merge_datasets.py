@@ -46,12 +46,13 @@ from pathlib import Path
 import cv2
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
+from common import EMOTIONS
 
 FER_DIR = PROJECT_ROOT / "webcam" / "datasets" / "fer2013"
 KDEF_DIR = PROJECT_ROOT / "webcam" / "datasets" / "kdef"
 DST_DEFAULT = PROJECT_ROOT / "webcam" / "datasets" / "combined"
 
-EMOTIONS = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
 SPLITS = ['train', 'val', 'test']
 IMG_EXT = {'.jpg', '.jpeg', '.png', '.bmp'}
 
@@ -210,6 +211,9 @@ def latih(dst, args):
     )
     print("\nTraining selesai!")
     print(f"Best model: {hasil.save_dir}/weights/best.pt")
+    print("\nUltralytics menulis ke runs/ yang ada di .gitignore. Salin model")
+    print("yang mau dipakai ke webcam/models/ supaya ikut tersimpan di git:")
+    print(f"  cp -r {hasil.save_dir} webcam/models/merged_baseline")
 
 
 def main():
@@ -291,7 +295,7 @@ def main():
         print("  python webcam/scripts/merge_datasets.py --train --epochs 20")
         print("\nSetelah selesai, ukur di kedua test set secara terpisah:")
         print("  python results_calculation.py face --no_cache \\")
-        print("      --visual_model runs/emotion/merged_baseline/weights/best.pt")
+        print("      --visual_model webcam/models/merged_baseline/weights/best.pt")
 
 
 if __name__ == '__main__':

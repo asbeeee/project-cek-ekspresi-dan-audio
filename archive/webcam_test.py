@@ -3,7 +3,7 @@ from pathlib import Path
 import cv2
 from ultralytics import YOLO
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 if __name__ == '__main__':
     # Load model
