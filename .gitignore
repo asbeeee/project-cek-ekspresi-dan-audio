@@ -1,5 +1,6 @@
 # Datasets - too large for GitHub, download separately
-# (FER2013, FERPlus, CREMA-D, RAVDESS, gabungan audio_emotion)
+# (FER2013, FERPlus, ExpW, KDEF, CREMA-D, RAVDESS, SAVEE, TESS,
+#  serta hasil olahannya: fer2013plus, expw, combined, audio_emotion)
 audio/datasets/
 webcam/datasets/
 

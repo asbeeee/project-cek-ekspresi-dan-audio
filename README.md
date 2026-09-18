@@ -1,6 +1,6 @@
 
 Real-time multimodal emotion recognition:
-YOLO (wajah, FER2013) + CNN-MFCC (audio, RAVDESS + CREMA-D) → decision-level fusion.
+YOLO (wajah, FER+ + ExpW + KDEF) + CNN-MFCC (audio, RAVDESS + CREMA-D + SAVEE + TESS) → decision-level fusion.
 Termasuk respons robot AiNex Hiwonder (lambaian tangan pada ekspresi *happy*).
 
 > **Respons lambaian sedang DIMATIKAN.** Kodenya masih lengkap, tapi pemicunya
@@ -21,9 +21,9 @@ Termasuk respons robot AiNex Hiwonder (lambaian tangan pada ekspresi *happy*).
 ├── audio/
 │   ├── scripts/               # organize, split, train audio CNN
 │   ├── models/                # best_audio_cnn.pt
-│   └── datasets/              # ravdess, crema-d, audio_emotion (tidak di git)
+│   └── datasets/              # ravdess, crema-d, savee, tess, audio_emotion (tidak di git)
 ├── webcam/
-│   ├── scripts/               # kdefTrain, merge_datasets, recheck, training
+│   ├── scripts/               # ferplus_build, expw_build, kdefTrain, merge_datasets, recheck, training
 │   ├── models/                # yolo pretrained + fer2013_baseline-2/
 │   │                          #   + merged_baseline/
 │   ├── results/               # confusion matrix, val runs
@@ -48,14 +48,51 @@ Terlalu besar untuk GitHub. Download manual dan taruh di:
 
 - `audio/datasets/ravdess/AudioWAV/` - <https://zenodo.org/record/1188976>
 - `audio/datasets/crema-d/AudioWAV/` - <https://github.com/CheyneyComputerScience/CREMA-D>
-- `webcam/datasets/fer2013/` - Kaggle FER2013
+- `audio/datasets/savee/AudioWAV/` - <http://kahlan.eps.surrey.ac.uk/savee/> (isi folder `ALL/`)
+- `audio/datasets/tess/AudioWAV/` - <https://tspace.library.utoronto.ca/handle/1807/24487>
+- `webcam/datasets/fer2013/` - Kaggle FER2013 (yang dipakai sekarang tinggal `fer2013.csv`-nya)
 - `webcam/datasets/FERPlus/` - <https://github.com/microsoft/FERPlus>
+- `webcam/datasets/expw_raw/` - ExpW, <http://mmlab.ie.cuhk.edu.hk/projects/socialrelation/index.html> (isinya `label.lst` + `origin/`)
+
+SAVEE dan TESS diratakan jadi satu folder `AudioWAV/` seperti dua dataset
+lainnya - label dibaca dari nama berkas, bukan dari nama folder. Untuk TESS itu
+berarti 14 folder emosinya digabung; jangan ikut menyalin folder bersarang di
+dalam unduhannya, isinya salinan persis dan akan terhitung dua kali.
 
 Setelah dataset audio ada, jalankan:
 ```bash
 python audio/scripts/organize_audio.py
 python audio/scripts/split_audio.py
 ```
+
+`organize_audio.py` melewati dataset yang foldernya belum ada, jadi aman
+dijalankan walau baru punya sebagian. `split_audio.py` MENGHAPUS `train/`,
+`val/`, dan `test/` lama sebelum mengisi ulang - harus begitu, karena begitu
+ada dataset baru masuk pembagiannya berubah, dan berkas sisa pembagian lama
+bisa membuat satu berkas ada di train sekaligus di test.
+
+Hasilnya 12162 berkas: 8512 train, 1821 val, 1829 test. Rincian per kelas dan
+per dataset ada di `DATASETS.txt`.
+
+Untuk dataset wajah, jalankan tiga skrip ini berurutan:
+```bash
+python webcam/scripts/ferplus_build.py     # FER2013 + label FER+ -> fer2013plus/
+python webcam/scripts/expw_build.py        # potong wajah ExpW    -> expw/
+python webcam/scripts/kdefTrain.py         # potong wajah KDEF    -> kdef/
+python webcam/scripts/merge_datasets.py    # gabungkan            -> combined/
+```
+
+**FERPlus bukan gambar baru** - isinya label ulang untuk gambar FER2013 yang
+sama, hasil voting 10 anotator, dipasangkan menurut urutan baris CSV.
+`ferplus_build.py` menggambar ulang pikselnya dari `fer2013.csv` karena nama
+berkas JPG di `fer2013/` adalah ID acak Kaggle, bukan nomor baris.
+
+Perlu diketahui: FER+ membuat kelas `disgust` MENYUSUT dari 436 ke 175 gambar
+latih. ExpW yang menambalnya kembali ke 4114. Jangan memakai `fer2013` dan
+`fer2013plus` bersamaan - gambarnya sama, labelnya beda, dan
+`merge_datasets.py` menolak kombinasi itu.
+
+Hasil gabungannya 79729 berkas: 60950 train, 9398 val, 9381 test.
 
 ## Setup
 
@@ -183,16 +220,23 @@ python results_figures.py          # PNG
 python results_figures.py --jpg    # PNG + JPG
 ```
 
-Menghasilkan dua gambar di `results/`:
+Menghasilkan tiga gambar di `results/`:
 
 - `figur_model_wajah.png` - baseline vs gabungan di kedua test set, F1 per kelas,
   dan dua confusion matrix. Perbedaan yang tidak signifikan ditandai `n.s.`
   (uji McNemar pada sampel berpasangan).
 - `figur_fusion.png` - perbandingan wajah / audio / fusion, sapuan bobot alpha,
   dan confusion matrix fusion.
+- `figur_sesi_18sep.png` - sebelum vs sesudah penambahan FER+, ExpW, SAVEE, dan
+  TESS. Dibaca dari CSV di `results/`, bukan dari cache probabilitas, jadi bisa
+  dirender sendiri tanpa inferensi ulang:
 
-Membaca probabilitas dari `results/cache/`, jadi kalau cache-nya sudah ada,
-gambarnya jadi dalam hitungan detik tanpa inferensi ulang.
+  ```bash
+  python results_figures.py --sesi --jpg
+  ```
+
+Dua gambar pertama membaca probabilitas dari `results/cache/`, jadi kalau
+cache-nya sudah ada, gambarnya jadi dalam hitungan detik tanpa inferensi ulang.
 
 ## Gabungan FER2013 + KDEF
 
@@ -220,7 +264,7 @@ dengan `--cap N` untuk membatasi kelas mayoritas FER2013.
 Ukur hasilnya di test set masing-masing dataset **secara terpisah**, bukan di
 test gabungan - angka gabungan menyembunyikan pertukaran antar-domain.
 
-### Hasil (20 epoch, RTX 4060, ~50 menit)
+### Hasil lama (FER2013 + KDEF, 20 epoch, RTX 4060, ~50 menit)
 
 Diukur di test set masing-masing sumber secara terpisah, keduanya grayscale.
 Test KDEF berisi 12 orang yang tidak pernah dilihat saat latih, jadi angkanya
@@ -232,9 +276,53 @@ person-independent.
 | gabungan (FER+KDEF)  |      0.6731 |           0.6564 |   0.9306 |        0.9296 |
 
 Di domain lamanya praktis impas (accuracy -0.8pp, macro-F1 +0.2pp), sementara di
-domain barunya naik drastis (+40.7pp accuracy). F1 `disgust` di test FER2013
-naik dari 0.6000 ke 0.6731 - kelas yang memang paling kekurangan data dan paling
-banyak dibantu KDEF.
+domain barunya naik drastis (+40.7pp accuracy).
+
+### Hasil sekarang (FER+ + ExpW + KDEF, 20 epoch, RTX 4060, ~31 menit)
+
+Model: `webcam/models/gabungan_ferplus_expw/weights/best.pt`
+(yolov8n-cls, batch 64, workers 8, val top-1 terbaik 0.6964 di epoch 19).
+
+KEDUA model diuji di test set yang SAMA (`webcam/datasets/combined`, 9381
+gambar), jadi selisihnya murni beda model - bukan beda data uji.
+
+| test set          |     n | acc lama | acc baru | macro-F1 lama | macro-F1 baru |
+|-------------------|------:|---------:|---------:|--------------:|--------------:|
+| gabungan (semua)  |  9381 |   0.4741 |   0.6976 |        0.4306 |        0.6293 |
+| FER+              |  3350 |   0.6773 |   0.8546 |        0.5934 |        0.7359 |
+| ExpW              |  5527 |   0.3094 |   0.5792 |        0.2885 |        0.4900 |
+| KDEF              |   504 |   0.9306 |   0.9524 |        0.9296 |        0.9524 |
+
+Baris ExpW memang diharapkan melonjak - model lama tidak pernah melihat ExpW
+sama sekali. Yang lebih informatif adalah **FER+ naik 17.7pp** (label yang lebih
+bersih memang lebih mudah dipelajari) dan **KDEF tetap naik 2.2pp** walau
+porsinya di data latih turun dari 21.9% ke 13.2%.
+
+F1 per kelas di test gabungan, kelas yang paling banyak berubah:
+
+| kelas    | F1 lama | F1 baru |
+|----------|--------:|--------:|
+| takut    |  0.1991 |  0.5043 |
+| marah    |  0.4223 |  0.6607 |
+| netral   |  0.4872 |  0.7097 |
+| jijik    |  0.2006 |  0.3287 |
+
+`jijik` tetap yang paling lemah (0.3287). Itu wajar: FER+ cuma menyisakan 175
+gambar latih untuk kelas ini, dan tambalan dari ExpW justru kelas yang labelnya
+paling berisik.
+
+### Audio dan fusion
+
+Test set audionya BERBEDA sebelum dan sesudah (1337 lalu 1829 sampel) karena
+datasetnya sendiri bertambah, jadi angkanya tidak sebanding satu lawan satu.
+
+| model  | acc sebelum | acc sesudah | macro-F1 sebelum | macro-F1 sesudah |
+|--------|------------:|------------:|-----------------:|-----------------:|
+| audio  |      0.5939 |      0.6419 |           0.6096 |           0.6632 |
+| fusion |      0.7734 |      0.8140 |           0.7570 |           0.7689 |
+
+Fusion tetap di atas kedua modalitas tunggalnya (wajah 0.6976, audio 0.6419),
+yang memang jadi alasan pendekatan ini dipakai.
 
 ### Catatan GPU
 
@@ -305,6 +393,22 @@ Hasil training mendarat di `runs/classify/runs/emotion/<name>/` yang ada di
 `.gitignore`. Salin model yang mau dipakai ke `webcam/models/` supaya ikut
 tersimpan di git.
 
+`merge_datasets.py` sekarang menerima sumber apa pun lewat `--sources`:
+
+```bash
+python webcam/scripts/merge_datasets.py --dry_run              # lihat tabelnya dulu
+python webcam/scripts/merge_datasets.py --sources fer2013plus,kdef
+python webcam/scripts/merge_datasets.py --repeat kdef=6 --cap 5000
+python webcam/scripts/merge_datasets.py --sources fer2013,kdef --force   # baseline lama
+```
+
+| sumber | jumlah | bentuk |
+|--------|--------|--------|
+| `fer2013plus` | 33500 | 48x48 abu-abu, label FER+ |
+| `expw` | 37254 | 224x224 abu-abu, wajah dipotong dari foto liar |
+| `kdef` | 2936 | 224x224 warna, studio |
+| `fer2013` | 35887 | 48x48 abu-abu, label asli (jangan digabung dengan `fer2013plus`) |
+
 ### Audio CNN - BUTUH `--yes` juga
 
 ```bash
@@ -316,6 +420,7 @@ dan pesannya menampilkan perintah lengkap yang tinggal disalin.
 
 ```bash
 python audio/scripts/train_audio_cnn.py --yes   --epochs 50 --batch 64 --workers 4
+python audio/scripts/train_audio_cnn.py --yes   --balance --select macro
 ```
 
 `--device` default `auto` (dulu terkunci `'cpu'`). Soal `--workers`: MFCC
@@ -329,7 +434,19 @@ di mesin ini untuk 1024 sampel:
 | 4       | 10.4s |
 | 8       | 18.1s |
 
-Bobot ditimpa tiap kali val accuracy membaik, jadi `best_audio_cnn.pt` selalu
+Tiap epoch melaporkan dua angka: `acc` (akurasi biasa) dan `macro` (rata-rata
+akurasi per kelas). Keduanya dipisah karena kelas `surprise` cuma punya 456
+sampel train lawan 1346 kelas lain - CREMA-D tidak punya kelas itu sama sekali.
+Kalau `macro` jauh di bawah `acc`, kelas kecil yang dikorbankan. Dua opsi untuk
+itu, dua-duanya mati secara bawaan supaya hasilnya masih bisa dibandingkan
+dengan latihan-latihan sebelumnya:
+
+| opsi | efek |
+|------|------|
+| `--balance` | kelas kecil diberi bobot lebih besar di `CrossEntropyLoss` |
+| `--select macro` | checkpoint terbaik dipilih dari `macro`, bukan `acc` |
+
+Bobot ditimpa tiap kali skor val membaik, jadi `best_audio_cnn.pt` selalu
 berisi model terbaik - bukan epoch terakhir. Latih ulang akan MENIMPA model
 yang sekarang dipakai; simpan dulu salinannya, atau arahkan ke berkas lain
 dengan `--out`.

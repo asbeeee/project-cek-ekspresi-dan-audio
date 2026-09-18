@@ -6,6 +6,18 @@ menyimpan dua gambar siap tempel ke laporan:
 
     results/figur_model_wajah.png   perbandingan baseline vs gabungan
     results/figur_fusion.png        perbandingan wajah / audio / fusion
+    results/figur_sesi_18sep.png    sebelum vs sesudah sesi 18 September 2026
+
+Figur ketiga dibaca dari CSV di results/, bukan dari cache probabilitas, jadi
+'--sesi' bisa dipakai untuk merendernya sendiri tanpa inferensi ulang. CSV-nya
+dibuat dengan:
+
+    M=webcam/models/gabungan_ferplus_expw/weights/best.pt
+    L=webcam/models/merged_baseline/weights/best.pt
+    D=webcam/datasets/combined
+    python results_calculation.py face --visual_model $M --data $D --tag gabungan_all
+    python results_calculation.py face --visual_model $L --data $D --tag lama_all
+    # lalu ulangi dengan --prefix fer2013plus_ / expw_ / kdef_ dan --tag yang sesuai
 
 Jalankan results_calculation.py dulu supaya cache-nya ada:
 
@@ -147,7 +159,9 @@ def metrik(probs, labels):
 # ===================================================================
 # GAMBAR 1 - MODEL WAJAH
 # ===================================================================
-def dumbbell(ax, label, sebelum, sesudah, judul, catatan=None):
+def dumbbell(ax, label, sebelum, sesudah, judul, catatan=None,
+             nama_sebelum='baseline (FER2013)',
+             nama_sesudah='gabungan (FER+KDEF)', xmax=1.12):
     """Sebelum -> sesudah per item. Satu hue, dua shade."""
     y = np.arange(len(label))[::-1]
     for i, (s0, s1) in enumerate(zip(sebelum, sesudah)):
@@ -156,9 +170,9 @@ def dumbbell(ax, label, sebelum, sesudah, judul, catatan=None):
     # "Sebelum" digambar lebih besar dan di belakang; kalau kedua nilainya
     # nyaris sama, cincinnya masih menyembul di balik titik "sesudah".
     ax.scatter(sebelum, y, s=118, color=BIRU_MUDA, zorder=2,
-               edgecolor=SURFACE, linewidth=1.6, label='baseline (FER2013)')
+               edgecolor=SURFACE, linewidth=1.6, label=nama_sebelum)
     ax.scatter(sesudah, y, s=58, color=BIRU_TUA, zorder=4,
-               edgecolor=SURFACE, linewidth=1.6, label='gabungan (FER+KDEF)')
+               edgecolor=SURFACE, linewidth=1.6, label=nama_sesudah)
 
     # Label langsung hanya di ujung "sesudah" - tidak setiap titik diberi angka.
     for i, (s0, s1) in enumerate(zip(sebelum, sesudah)):
@@ -171,7 +185,7 @@ def dumbbell(ax, label, sebelum, sesudah, judul, catatan=None):
 
     ax.set_yticks(y)
     ax.set_yticklabels(label, color=INK_2)
-    ax.set_xlim(0, 1.12)
+    ax.set_xlim(0, xmax)
     ax.set_title(judul, color=INK, fontsize=10, loc='left', pad=10)
     rapikan(ax)
 
@@ -356,6 +370,143 @@ def gambar_fusion(d, args, path):
     simpan(fig, path)
 
 
+# ===================================================================
+# GAMBAR 3 - PERBANDINGAN SEBELUM / SESUDAH SESI 18 SEPTEMBER 2026
+# ===================================================================
+def baca_metrik(nama):
+    """Baca results/metrics_<nama>.csv jadi dict.
+
+    Kembalikan {'kelas': {f1, precision, recall, support}, 'accuracy': x,
+    'macro_f1': y}. Berkasnya dibuat results_calculation.py lewat --tag.
+    """
+    import csv
+
+    path = OUT_DIR / f"metrics_{nama}.csv"
+    if not path.is_file():
+        raise SystemExit(
+            f"ERROR: {path} tidak ada.\n"
+            f"       Jalankan dulu results_calculation.py dengan --tag yang "
+            f"sesuai;\n"
+            f"       perintah lengkapnya ada di docstring berkas ini.")
+
+    hasil = {'kelas': {}}
+    with open(path, newline='', encoding='utf-8') as f:
+        for r in csv.DictReader(f):
+            nama_baris = r['kelas']
+            if nama_baris == 'accuracy':
+                hasil['accuracy'] = float(r['f1_score'])
+            elif nama_baris == 'macro avg':
+                hasil['macro_f1'] = float(r['f1_score'])
+            elif nama_baris == 'weighted avg':
+                continue
+            else:
+                hasil['kelas'][nama_baris] = {
+                    'f1': float(r['f1_score']),
+                    'support': int(r['support']),
+                }
+    return hasil
+
+
+def gambar_sesi(path):
+    """Tiga panel: wajah per domain, wajah per kelas, audio per kelas.
+
+    Semuanya dumbbell karena tugas datanya sama - satu nilai sebelum dan satu
+    nilai sesudah untuk tiap item. Satu hue biru dua shade (ordinal), bukan
+    dua warna kategorikal: "lama" dan "baru" itu berurutan, bukan dua hal
+    yang setara.
+    """
+    domain = [
+        ('gabungan (semua)', 'face_lama_all_test', 'face_gabungan_all_test'),
+        ('FER+', 'face_lama_fer2013plus_test', 'face_gabungan_fer2013plus_test'),
+        ('ExpW', 'face_lama_expw_test', 'face_gabungan_expw_test'),
+        ('KDEF', 'face_lama_kdef_test', 'face_gabungan_kdef_test'),
+    ]
+    d_lama = [baca_metrik(a) for _, a, _ in domain]
+    d_baru = [baca_metrik(b) for _, _, b in domain]
+
+    a_lama = baca_metrik('audio_lama_test')
+    a_baru = baca_metrik('audio_test')
+
+    fig = plt.figure(figsize=(14.5, 7.4))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.0, 1.0],
+                          left=0.10, right=0.985, top=0.745, bottom=0.135,
+                          wspace=0.52)
+
+    # --- Panel A: wajah, akurasi per domain uji -------------------------
+    # Jumlah sampel ditaruh di label sumbu, bukan sebagai catatan di samping
+    # titik: di versi sebelumnya catatan itu bertabrakan dengan titiknya
+    # sendiri waktu nilainya kecil (ExpW) maupun besar (KDEF).
+    ax = fig.add_subplot(gs[0, 0])
+    label = [f"{n}\nn={sum(k['support'] for k in x['kelas'].values())}"
+             for (n, _, _), x in zip(domain, d_baru)]
+    sebelum = [x['accuracy'] for x in d_lama]
+    sesudah = [x['accuracy'] for x in d_baru]
+    dumbbell(ax, label, sebelum, sesudah,
+             'A. Model wajah - akurasi per domain uji',
+             nama_sebelum='model lama (FER2013 + KDEF)',
+             nama_sesudah='model baru (FER+ + ExpW + KDEF)',
+             xmax=1.12)
+    ax.set_xlabel('accuracy', fontsize=8, color=INK_2)
+
+    # --- Panel B: wajah, F1 per kelas di test gabungan ------------------
+    ax = fig.add_subplot(gs[0, 1])
+    kelas_urut = sorted(EMOTIONS,
+                        key=lambda k: d_baru[0]['kelas'][k]['f1'], reverse=True)
+    sebelum = [d_lama[0]['kelas'][k]['f1'] for k in kelas_urut]
+    sesudah = [d_baru[0]['kelas'][k]['f1'] for k in kelas_urut]
+    dumbbell(ax, [EMOTIONS_ID[k] for k in kelas_urut], sebelum, sesudah,
+             'B. Model wajah - F1 per kelas, test gabungan',
+             nama_sebelum='model lama (FER2013 + KDEF)',
+             nama_sesudah='model baru (FER+ + ExpW + KDEF)',
+             xmax=1.02)
+    ax.set_xlabel('F1-score', fontsize=8, color=INK_2)
+
+    # --- Panel C: audio, F1 per kelas -----------------------------------
+    # Dibuat per kelas, bukan cuma accuracy + macro F1: dua baris saja
+    # menyisakan panel yang hampir kosong, dan yang menarik dari sesi ini
+    # justru ada di tingkat kelas (surprise).
+    ax = fig.add_subplot(gs[0, 2])
+    kelas_audio = sorted(EMOTIONS,
+                         key=lambda k: a_baru['kelas'][k]['f1'], reverse=True)
+    dumbbell(ax, [EMOTIONS_ID[k] for k in kelas_audio],
+             [a_lama['kelas'][k]['f1'] for k in kelas_audio],
+             [a_baru['kelas'][k]['f1'] for k in kelas_audio],
+             'C. Model audio - F1 per kelas',
+             nama_sebelum='sebelum (RAVDESS + CREMA-D)',
+             nama_sesudah='sesudah (+ SAVEE + TESS)',
+             xmax=1.02)
+    ax.set_xlabel('F1-score', fontsize=8, color=INK_2)
+
+    # Dua pasang legenda - panel A/B dan panel C memakai seri yang berbeda.
+    h1, l1 = fig.axes[0].get_legend_handles_labels()
+    fig.legend(h1, l1, loc='lower left', frameon=False,
+               bbox_to_anchor=(0.10, 0.012), ncol=2, labelcolor=INK_2,
+               fontsize=8.5, handletextpad=0.4, columnspacing=1.4)
+    h3, l3 = fig.axes[2].get_legend_handles_labels()
+    fig.legend(h3, l3, loc='lower left', frameon=False,
+               bbox_to_anchor=(0.695, 0.012), ncol=1, labelcolor=INK_2,
+               fontsize=8.5, handletextpad=0.4)
+
+    fig.suptitle('Hasil training sesi 18 September 2026: sebelum vs sesudah',
+                 fontsize=13.5, color=INK, x=0.10, ha='left', y=0.960)
+    fig.text(0.10, 0.900,
+             'Panel A dan B: kedua model diuji pada test set yang SAMA '
+             '(combined, 9381 gambar), jadi selisihnya murni beda model - '
+             'kecuali baris ExpW,',
+             fontsize=8.5, color=MUTED, ha='left')
+    fig.text(0.10, 0.866,
+             'yang memang diharapkan melonjak karena model lama tidak pernah '
+             'melihat ExpW. Baris FER+ dan KDEF yang lebih informatif.',
+             fontsize=8.5, color=MUTED, ha='left')
+    fig.text(0.10, 0.826,
+             f"Panel C: test set audionya BERBEDA (1337 lalu 1829 sampel) "
+             f"karena datasetnya bertambah. Accuracy "
+             f"{a_lama['accuracy']:.3f} -> {a_baru['accuracy']:.3f}, macro F1 "
+             f"{a_lama['macro_f1']:.3f} -> {a_baru['macro_f1']:.3f}.",
+             fontsize=8.5, color=MUTED, ha='left')
+    simpan(fig, path)
+
+
 def simpan(fig, path):
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=200)
@@ -375,17 +526,28 @@ def main():
                    help="Bobot model gabungan (FER2013 + KDEF).")
     p.add_argument('--jpg', action='store_true',
                    help="Simpan .jpg selain .png (PNG lebih tajam untuk teks).")
+    p.add_argument('--sesi', action='store_true',
+                   help="Cuma render figur perbandingan sebelum/sesudah sesi "
+                        "18 September 2026. Dibaca dari CSV di results/, jadi "
+                        "tidak menjalankan inferensi ulang - jauh lebih cepat.")
     args = p.parse_args()
+
+    ext = ['png', 'jpg'] if args.jpg else ['png']
+
+    if args.sesi:
+        for e in ext:
+            gambar_sesi(OUT_DIR / f"figur_sesi_18sep.{e}")
+        return
 
     for m in (args.base_model, args.merged_model):
         if not Path(m).exists():
             raise SystemExit(f"ERROR: bobot tidak ada: {m}")
 
     d = kumpulkan(args)
-    ext = ['png', 'jpg'] if args.jpg else ['png']
     for e in ext:
         gambar_wajah(d, OUT_DIR / f"figur_model_wajah.{e}")
         gambar_fusion(d, args, OUT_DIR / f"figur_fusion.{e}")
+        gambar_sesi(OUT_DIR / f"figur_sesi_18sep.{e}")
 
 
 if __name__ == '__main__':

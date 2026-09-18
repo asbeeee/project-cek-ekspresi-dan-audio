@@ -408,3 +408,293 @@ BARU  results_figures.py
       jadi dua warna kategorikal biasa - panjang batangnya sendiri sudah cukup
       menunjukkan fusion menang.
 
+
+===============================================================================
+12. DATASET SUARA DITAMBAH: SAVEE DAN TESS (18 September 2026)
+===============================================================================
+
+Latar belakang: kelas surprise cuma punya 192 berkas lawan 1375-1463 kelas
+lain, karena CREMA-D - penyumbang 7442 dari 8882 berkas - tidak punya kelas
+itu sama sekali. Dua dataset baru ditambahkan terutama untuk menambal itu.
+
+BARU  audio/datasets/savee/AudioWAV/   480 berkas
+      SAVEE, 4 penutur laki-laki. Nama berkas <penutur>_<kode><nomor>.wav.
+
+BARU  audio/datasets/tess/AudioWAV/    2800 berkas
+      TESS, 2 penutur perempuan (OAF dan YAF), 14 folder emosi diratakan jadi
+      satu folder. Unduhannya berisi folder bersarang dengan nama yang sama
+      berisi salinan PERSIS 2800 berkas itu - dicek dengan md5, dan yang
+      disalin hanya lapis luarnya. Kalau keduanya ikut, tiap berkas terhitung
+      dua kali dan kembarannya bisa jatuh di train sekaligus di test.
+
+UBAH  audio/scripts/organize_audio.py
+      Tambah organize_savee() dan organize_tess(), plus lewati_kalau_kosong()
+      supaya dataset yang belum diunduh dilewati dengan pesan, bukan bikin
+      skripnya gagal.
+
+      Dua jebakan pemetaan label yang ditangani:
+        - SAVEE: kode emosinya campuran satu dan dua huruf (a, d, f, h, n, sa,
+          su). Angkanya dibuang dulu lalu dicocokkan UTUH; startswith() akan
+          salah membaca "sa01" sebagai kelas "a".
+        - TESS: kapitalisasi nama folder tidak konsisten di rilis aslinya
+          (OAF_Fear/OAF_Sad berhuruf besar, YAF_fear/YAF_sad kecil). Label
+          dibaca dari nama BERKAS, yang selalu huruf kecil. Kode "ps" =
+          pleasant surprise dipetakan ke surprise.
+
+      Ringkasan akhirnya sekarang memecah jumlah per kelas menurut dataset
+      asalnya, jadi kelihatan mana yang menyumbang apa.
+
+UBAH  audio/scripts/split_audio.py
+      Sekarang MENGHAPUS train/, val/, dan test/ dulu sebelum mengisi ulang.
+
+      Ini memperbaiki masalah nyata, bukan sekadar kerapian. Pembagiannya acak
+      per kelas dengan seed 42, jadi begitu isi raw/ berubah, daftar berkasnya
+      berubah dan pembagiannya ikut berbeda. Tanpa penghapusan, berkas dari
+      pembagian LAMA tertinggal di sana - satu berkas yang dulu di test bisa
+      sekarang juga ada di train, dan akurasinya jadi terlalu bagus. Ada
+      --keep kalau memang sengaja mau menumpuk.
+
+      Sekalian: glob() di-sorted() dulu sebelum shuffle, supaya pembagiannya
+      tidak bergantung urutan sistem berkas, dan dapat argparse (--seed).
+
+UBAH  audio/scripts/train_audio_cnn.py
+      Datanya sendiri tidak butuh perubahan skrip - formatnya sama. Yang
+      ditambahkan adalah cara membacanya:
+
+        - tiap epoch melaporkan acc DAN macro (rata-rata akurasi per kelas).
+          Pada data timpang, acc saja menyesatkan: model yang jarang menebak
+          surprise pun masih kelihatan bagus.
+        - --balance  : bobot kelas di CrossEntropyLoss, berbanding terbalik
+                       dengan jumlah sampel, dinormalkan ke rata-rata 1.
+        - --select macro : checkpoint terbaik dipilih dari macro, bukan acc.
+        - setelah selesai, akurasi per kelas dicetak dari checkpoint yang
+          benar-benar disimpan, bukan dari epoch terakhir.
+
+      Dua opsi barunya MATI secara bawaan, jadi perintah lama menghasilkan
+      perilaku yang persis sama seperti sebelumnya.
+
+HASIL raw/ 8882 -> 12162 berkas; train 6216 -> 8512, val 1329 -> 1821,
+      test 1337 -> 1829. Irisan antar split dicek = 0 berkas.
+
+        kelas      sebelum  sesudah
+        --------   -------  -------
+        angry         1463     1923
+        disgust       1463     1923
+        fear          1463     1923
+        happy         1463     1923
+        neutral       1375     1895
+        sad           1463     1923
+        surprise       192      652   <- 3.4x lebih banyak
+
+      Ketimpangan surprise turun dari 7.62x ke 2.95x.
+
+PERLU DIPERHATIKAN
+      audio/models/best_audio_cnn.pt yang sekarang dilatih pada pembagian
+      LAMA. Karena raw/ berubah, pembagiannya ikut berubah, dan berkas yang
+      dulu dipakai melatih model itu sekarang banyak yang mendarat di test.
+      Jadi angka dari "results_calculation.py audio" pada model lama sudah
+      TIDAK sah - modelnya harus dilatih ulang dulu.
+
+BATASAN yang perlu masuk laporan: pembagiannya acak per BERKAS, bukan per
+      penutur, jadi angkanya speaker-dependent. TESS memperparah ini - cuma 2
+      penutur untuk 2800 berkas, dan keduanya mengucapkan 200 kata yang sama
+      untuk tiap emosi, jadi hampir tiap berkas test punya kembaran di train
+      dengan penutur, kata, dan emosi yang sama. Penjelasan lengkap di
+      DATASETS.txt bagian B6.
+
+
+===============================================================================
+13. DATASET WAJAH DITAMBAH: FER+ DAN ExpW (18 September 2026)
+===============================================================================
+
+BARU  webcam/scripts/ferplus_build.py
+      FERPlus ternyata BUKAN kumpulan gambar - isinya label ulang untuk gambar
+      FER2013 yang itu-itu juga, hasil voting 10 anotator, dipasangkan menurut
+      URUTAN BARIS dengan fer2013.csv. Sebelumnya berkas ini cuma ter-download
+      dan menganggur (DATASETS.txt bagian D nomor 4).
+
+      Gambarnya digambar ULANG dari fer2013.csv, bukan memakai JPG di
+      webcam/datasets/fer2013/. Alasannya: nama berkas JPG di situ
+      (Training_10118481.jpg) adalah ID acak dari unggahan Kaggle, bukan nomor
+      baris, jadi tidak ada cara memasangkannya dengan fer2013new.csv.
+
+      Label ditentukan suara terbanyak; dibuang kalau 'unknown'/'NF'/'contempt'
+      yang menang, kalau seri di posisi teratas, atau kalau tidak ada suara
+      sama sekali. Dari 35887 baris, 33500 terpakai.
+
+      Split memakai kolom Usage bawaan (Training/PublicTest/PrivateTest), yaitu
+      pembagian resmi yang dipakai makalah-makalah FER+.
+
+      PAGAR PENGAMAN. Keluarannya dinamai fer2013plus, bukan ferplus. Windows
+      tidak membedakan huruf besar-kecil, jadi 'webcam/datasets/ferplus'
+      menunjuk folder yang SAMA dengan 'webcam/datasets/FERPlus' - sumbernya
+      sendiri. Percobaan pertama ketahuan waktu skrip menolak menimpa folder
+      yang sudah ada; kalau waktu itu --force terlanjur dipakai, fer2013new.csv
+      ikut terhapus. Sekarang skripnya menolak kalau folder tujuan berisi
+      berkas sumber, apa pun namanya.
+
+BARU  webcam/scripts/expw_build.py
+      ExpW memberi foto UTUH di origin/ plus label.lst berisi kotak wajah, jadi
+      wajahnya harus dipotong sendiri. Kotak dipotong dengan padding 20%, sama
+      seperti kdefTrain.py dan deteksi Haar di fusion_webcam.py, lalu diubah ke
+      224x224 grayscale.
+
+      Tiga hal yang ditangani:
+        - Satu foto bisa punya sampai 6 wajah lebih. Pembagian train/val/test
+          karena itu diacak per FOTO, bukan per wajah; kalau per wajah, dua
+          wajah dari foto yang sama bisa jatuh di train dan test sekaligus
+          dengan latar dan pencahayaan yang sama. Irisan foto antar split
+          sudah dicek = 0.
+        - origin/ berisi 106962 berkas tapi label.lst cuma menyebut 68096.
+          Sisanya tidak berlabel, dilewati.
+        - Sebarannya sangat timpang (neutral 34883 dan happy 30537 = 71%,
+          fear cuma 1088). --cap 5000 membatasi per kelas di train, val dan
+          test ikut proporsional. Batas diterapkan per foto juga, jadi hasilnya
+          bisa sedikit melebihi - happy berakhir di 5002.
+
+UBAH  webcam/scripts/merge_datasets.py - tidak lagi terpaku FER2013 + KDEF
+      Sumbernya sekarang lewat --sources, pengulangan lewat --repeat nama=N.
+      --kdef_repeat lama masih jalan sebagai jalan pintas. Tabel ringkasannya
+      ikut menyesuaikan jumlah kolom, dan sekarang menampilkan porsi tiap
+      sumber plus ketimpangan antar kelas.
+
+      Tambahan --imgsz untuk menyeragamkan ukuran, karena sumbernya sekarang
+      campur 48x48 dan 224x224. Bawaannya mati; ultralytics toh mengubah ukuran
+      saat memuat.
+
+      Sumber yang sudah abu-abu (FER+, ExpW) dideteksi dengan mencicipi
+      beberapa berkas, lalu disalin apa adanya tanpa baca-tulis ulang. Untuk
+      puluhan ribu berkas ini beda yang terasa.
+
+      PENOLAKAN BARU: fer2013 dan fer2013plus tidak boleh dipakai bersamaan.
+      Gambarnya sama persis, labelnya beda, jadi menggabungnya berarti memberi
+      model dua jawaban yang bertabrakan untuk satu wajah.
+
+HASIL webcam/datasets/combined/ disusun ulang: 44862 -> 79729 berkas.
+
+        split   fer2013plus    expw    kdef    total
+        train         26778   26120    8052    60950
+        val            3372    5607     419     9398
+        test           3350    5527     504     9381
+
+      Yang paling penting, kelas disgust:
+
+        FER2013 asli      436 gambar latih
+        FER+              175   <- FER+ justru memperburuk
+        gabungan         4114   <- ExpW yang menambal
+
+      Ketimpangan antar kelas di train: FER2013 16.4x, FER+ sendirian 53.5x,
+      gabungan sekarang 6.1x. Kelas paling langka berpindah dari disgust ke
+      fear (2554).
+
+      Susunan lama masih bisa dibuat ulang:
+        python webcam/scripts/merge_datasets.py --sources fer2013,kdef --force
+
+BATASAN yang perlu masuk laporan: mutu label ExpW jelas di bawah FER+ dan
+      KDEF. Contoh potongannya diperiksa dengan mata - ada wajah di kelas
+      'happy' yang tidak tersenyum sama sekali dan beberapa bayi di kelas
+      'disgust'. Sebagian fotonya juga stok berwatermark (Shutterstock, Getty),
+      dan watermark adalah pola konsisten yang bisa ikut dipelajari model
+      sebagai petunjuk palsu. Tidak diukur seberapa banyak.
+
+
+===============================================================================
+14. HASIL TRAINING SESI INI + PEMBERESAN (18 September 2026)
+===============================================================================
+
+Bagian 12 dan 13 menyiapkan datanya; bagian ini mencatat hasil melatihnya.
+
+MODEL WAJAH
+      webcam/models/gabungan_ferplus_expw/  (disalin dari runs/, ikut git)
+      yolov8n-cls, 20 epoch, batch 64, workers 8, RTX 4060, ~31 menit.
+      Val top-1 terbaik 0.6964 di epoch 19.
+
+      KEDUA model - yang lama dan yang baru - diuji di test set yang SAMA
+      (webcam/datasets/combined, 9381 gambar). Ini penting: membandingkan
+      angka lama yang diukur di test FER2013 dengan angka baru yang diukur di
+      test FER+ tidak sah, karena label dan isinya beda. Jadi model lama
+      dijalankan ulang di test set yang baru.
+
+        test set            n     acc lama  acc baru   macro-F1 lama  baru
+        ----------------  -----  ---------  --------   -------------  ------
+        gabungan (semua)   9381     0.4741    0.6976          0.4306  0.6293
+        FER+               3350     0.6773    0.8546          0.5934  0.7359
+        ExpW               5527     0.3094    0.5792          0.2885  0.4900
+        KDEF                504     0.9306    0.9524          0.9296  0.9524
+
+      Baris ExpW memang diharapkan melonjak - model lama tidak pernah melihat
+      ExpW. Dua angka yang lebih informatif:
+        - FER+ naik 17.7pp. Label yang lebih bersih memang lebih mudah
+          dipelajari, dan itu memang tujuan memakai FER+.
+        - KDEF tetap naik 2.2pp walau porsinya di data latih turun dari 21.9%
+          ke 13.2%. Jadi menambah ExpW tidak mengorbankan domain studio.
+
+      F1 per kelas di test gabungan, yang paling banyak berubah:
+        takut   0.1991 -> 0.5043
+        marah   0.4223 -> 0.6607
+        netral  0.4872 -> 0.7097
+        jijik   0.2006 -> 0.3287
+
+      jijik tetap yang paling lemah. Wajar: FER+ cuma menyisakan 175 gambar
+      latih untuk kelas itu, dan tambalan dari ExpW justru kelas yang labelnya
+      paling berisik - persis yang diperingatkan di DATASETS.txt A5.
+
+MODEL AUDIO DAN FUSION
+      Test set audionya BERBEDA sebelum dan sesudah (1337 lalu 1829 sampel)
+      karena datasetnya sendiri bertambah, jadi angkanya TIDAK sebanding satu
+      lawan satu. Menjalankan model audio lama di test set baru juga tidak
+      menolong: berkas yang dulu dipakai melatihnya sekarang banyak yang jatuh
+      di test, jadi angkanya akan terlalu bagus. Kedua angka dilaporkan apa
+      adanya dengan catatan itu.
+
+        model     acc sebelum  acc sesudah   macro-F1 sebelum  sesudah
+        --------  -----------  -----------   ----------------  -------
+        audio          0.5939       0.6419             0.6096   0.6632
+        fusion         0.7734       0.8140             0.7570   0.7689
+
+      Fusion tetap di atas kedua modalitas tunggalnya (wajah 0.6976, audio
+      0.6419), yang memang jadi alasan pendekatan ini dipakai.
+
+BARU  results/figur_sesi_18sep.png dan .jpg
+      Tiga panel dumbbell: akurasi wajah per domain uji, F1 wajah per kelas,
+      dan F1 audio per kelas. Satu hue biru dua shade - "lama" dan "baru" itu
+      berurutan, bukan dua hal setara, jadi bukan pasangan kategorikal.
+
+      Dibaca dari CSV di results/, bukan dari cache probabilitas, jadi
+      'python results_figures.py --sesi' merendernya tanpa inferensi ulang.
+
+      Gambarnya diperiksa dengan mata setelah dirender, bukan dianggap benar
+      karena kodenya jalan. Dua masalah tata letak ketemu dan diperbaiki:
+      catatan "n=" di panel A bertabrakan dengan titiknya sendiri (dipindah ke
+      label sumbu), dan panel audio yang cuma dua baris menyisakan panel nyaris
+      kosong (diganti jadi F1 per kelas).
+
+UBAH  results_figures.py
+      dumbbell() sekarang menerima nama seri dan batas sumbu x, supaya bisa
+      dipakai ulang untuk perbandingan selain baseline-vs-gabungan. Tambah
+      baca_metrik() yang membaca metrics_*.csv, gambar_sesi(), dan bendera
+      --sesi.
+
+BARU  results/metrics_audio_lama_test.csv, confusion_audio_lama_test.csv
+      Salinan hasil audio SEBELUM SAVEE dan TESS masuk, diambil dari commit
+      74334c5. Disimpan sebagai berkas supaya figur perbandingan membaca data
+      nyata, bukan angka yang ditulis tangan di dalam kode.
+
+BERES tempSAVEE/ dan tempTESS/ dihapus.
+      Sebelum dihapus, semua 3280 berkasnya dicocokkan md5 satu per satu dengan
+      salinan di audio/datasets/savee/ dan audio/datasets/tess/ - 0 hilang,
+      0 berbeda isinya.
+
+      tempExpressionInTheWild/ sudah dipindah ke webcam/datasets/expw_raw/ di
+      bagian 13, bukan disalin, jadi tidak ada yang tertinggal di root.
+
+MASIH BISA DIBERESKAN SENDIRI
+      - webcam/datasets/expw_raw/origin.7z.001 sampai .008 masih ada padahal
+        origin/ sudah diekstrak. Aman dihapus, tapi dibiarkan karena itu berkas
+        unduhan asli.
+      - merge_datasets.py --train memakai yolo11n-cls.pt sementara
+        training_yolo_.py memakai yolov8n-cls.pt. Model di atas dilatih dengan
+        training_yolo_.py, jadi yolov8n. Perbedaan ini sudah ada sejak sebelum
+        sesi ini dan sengaja tidak diubah diam-diam - samakan dulu kalau mau
+        membandingkan hasil dua jalur itu.
+

@@ -13,10 +13,28 @@ Contoh:
     python audio/scripts/train_audio_cnn.py --help   # bantuan, aman
     python audio/scripts/train_audio_cnn.py --yes    # benar-benar melatih
     python audio/scripts/train_audio_cnn.py --yes --epochs 50 --batch 64 --workers 4
+    python audio/scripts/train_audio_cnn.py --yes --balance --select macro
 
 Arsitektur modelnya ada di common.py, bukan di sini. Itu disengaja: bentuknya
 harus sama persis dengan yang dipakai fusion_webcam.py dan results_calculation.py
 waktu memuat bobot hasil latihan ini.
+
+Soal kelas surprise. Datanya sekarang dari empat dataset (RAVDESS, CREMA-D,
+SAVEE, TESS). CREMA-D - yang paling besar - tidak punya kelas surprise sama
+sekali, jadi kelas itu tetap yang paling sedikit: 456 sampel train lawan 1346
+untuk kelas lain, timpang sekitar 2.9x (sebelum SAVEE dan TESS masuk: 7.6x).
+Akurasi biasa bisa menyesatkan pada data timpang - model yang jarang menebak
+surprise pun masih kelihatan bagus. Karena itu tiap epoch sekarang melaporkan
+DUA angka:
+
+    acc     akurasi biasa, semua sampel dihitung sama
+    macro   rata-rata akurasi per kelas; kelas kecil berbobot sama besar
+
+Kalau macro jauh di bawah acc, berarti kelas kecil yang dikorbankan. Dua opsi
+untuk itu: --balance (kelas kecil diberi bobot lebih besar di loss) dan
+--select macro (checkpoint terbaik dipilih berdasarkan macro, bukan acc).
+Keduanya mati secara bawaan supaya hasilnya bisa dibandingkan langsung dengan
+latihan-latihan sebelumnya.
 """
 import argparse
 import sys
@@ -29,7 +47,7 @@ from torch.utils.data import Dataset, DataLoader
 # audio/scripts/<berkas ini> -> root proyek ada di parents[2]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
-from common import EMOTIONS, make_audio_cnn, load_wav_mfcc
+from common import EMOTIONS, EMOTIONS_ID, make_audio_cnn, load_wav_mfcc
 
 DATA_DEFAULT = PROJECT_ROOT / "audio" / "datasets" / "audio_emotion"
 OUT_DEFAULT = PROJECT_ROOT / "audio" / "models" / "best_audio_cnn.pt"
@@ -55,11 +73,13 @@ class AudioDataset(Dataset):
 
     def __init__(self, data_dir, split):
         self.samples = []
+        self.jumlah_kelas = [0] * len(EMOTIONS)
         for idx, emo in enumerate(EMOTIONS):
             folder = Path(data_dir) / split / emo
             if folder.is_dir():
                 for f in sorted(folder.glob("*.wav")):
                     self.samples.append((f, idx))
+                    self.jumlah_kelas[idx] += 1
         if not self.samples:
             raise SystemExit(f"ERROR: tidak ada berkas .wav di "
                              f"{Path(data_dir) / split}")
@@ -73,22 +93,55 @@ class AudioDataset(Dataset):
         return torch.tensor(mfcc).unsqueeze(0), label   # (1, 40, 94)
 
 
+def bobot_kelas(jumlah, device):
+    """Bobot berbanding terbalik dengan jumlah sampel, dinormalkan ke rata 1.
+
+    Kelas yang sampelnya separuh dari kelas lain dapat bobot dua kali lipat,
+    jadi salah tebak di kelas kecil sama mahalnya di loss. Kelas kosong diberi
+    bobot 0 supaya tidak jadi pembagian dengan nol.
+    """
+    w = torch.tensor([1.0 / n if n else 0.0 for n in jumlah])
+    return (w / w[w > 0].mean()).to(device)
+
+
 def evaluate(model, loader, device):
+    """Kembalikan (akurasi, macro, benar per kelas, total per kelas)."""
     model.eval()
-    benar, total = 0, 0
+    n_kelas = len(EMOTIONS)
+    benar = [0] * n_kelas
+    total = [0] * n_kelas
     with torch.no_grad():
         for x, y in loader:
             x, y = x.to(device), y.to(device)
             pred = model(x).argmax(1)
-            benar += (pred == y).sum().item()
-            total += y.size(0)
-    return benar / total if total else 0.0
+            for t, p in zip(y.tolist(), pred.tolist()):
+                total[t] += 1
+                benar[t] += int(t == p)
+
+    n = sum(total)
+    acc = sum(benar) / n if n else 0.0
+    # Hanya kelas yang benar-benar ada di split ini yang ikut dirata-rata.
+    per_kelas = [b / t for b, t in zip(benar, total) if t]
+    macro = sum(per_kelas) / len(per_kelas) if per_kelas else 0.0
+    return acc, macro, benar, total
+
+
+def cetak_per_kelas(benar, total):
+    print("\n=== Akurasi per kelas di val, dari checkpoint yang disimpan ===")
+    for i, emo in enumerate(EMOTIONS):
+        if not total[i]:
+            continue
+        print(f"  {emo:9s} ({EMOTIONS_ID[emo]:8s}): "
+              f"{benar[i] / total[i]:.4f}  ({benar[i]}/{total[i]})")
 
 
 def latih(args, device):
     train_ds = AudioDataset(args.data, 'train')
     val_ds = AudioDataset(args.data, 'val')
     print(f"[data   ] train {len(train_ds)} sampel, val {len(val_ds)} sampel")
+    rincian = ", ".join(f"{e} {n}"
+                        for e, n in zip(EMOTIONS, train_ds.jumlah_kelas))
+    print(f"[data   ] train per kelas: {rincian}")
 
     train_dl = DataLoader(train_ds, batch_size=args.batch, shuffle=True,
                           num_workers=args.workers)
@@ -97,12 +150,21 @@ def latih(args, device):
 
     model = make_audio_cnn(len(EMOTIONS)).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    criterion = nn.CrossEntropyLoss()
+
+    if args.balance:
+        w = bobot_kelas(train_ds.jumlah_kelas, device)
+        print("[loss   ] bobot kelas: "
+              + ", ".join(f"{e} {v:.2f}"
+                          for e, v in zip(EMOTIONS, w.tolist())))
+        criterion = nn.CrossEntropyLoss(weight=w)
+    else:
+        criterion = nn.CrossEntropyLoss()
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    acc_terbaik = 0.0
+    terbaik = 0.0
+    benar_terbaik, total_terbaik = None, None
     for epoch in range(1, args.epochs + 1):
         model.train()
         total_loss = 0.0
@@ -114,18 +176,22 @@ def latih(args, device):
             optimizer.step()
             total_loss += loss.item()
 
-        val_acc = evaluate(model, val_dl, device)
+        val_acc, val_macro, benar, total = evaluate(model, val_dl, device)
+        skor = val_macro if args.select == 'macro' else val_acc
         tanda = ""
-        if val_acc > acc_terbaik:
-            acc_terbaik = val_acc
+        if skor > terbaik:
+            terbaik = skor
+            benar_terbaik, total_terbaik = benar, total
             torch.save(model.state_dict(), out)
             tanda = "  <- disimpan"
         print(f"Epoch {epoch}/{args.epochs} | "
               f"loss: {total_loss / len(train_dl):.4f} | "
-              f"val_acc: {val_acc:.4f}{tanda}")
+              f"acc: {val_acc:.4f} | macro: {val_macro:.4f}{tanda}")
 
-    print(f"\nTraining selesai! Val accuracy terbaik: {acc_terbaik:.4f}")
-    print(f"Model disimpan di: {out}")
+    print(f"\nTraining selesai! Val {args.select} terbaik: {terbaik:.4f}")
+    if benar_terbaik is not None:
+        cetak_per_kelas(benar_terbaik, total_terbaik)
+    print(f"\nModel disimpan di: {out}")
     print("\nUkur di test set dengan:")
     print("  python results_calculation.py audio --no_cache")
 
@@ -134,7 +200,7 @@ def main():
     p = argparse.ArgumentParser(
         description="Latih CNN-MFCC emosi suara. Butuh --yes untuk mulai.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Bobot ditimpa tiap kali val accuracy membaik, jadi berkas\n"
+        epilog="Bobot ditimpa tiap kali skor val membaik, jadi berkas\n"
                "keluarannya selalu model terbaik, bukan epoch terakhir.")
     p.add_argument('--yes', '-y', action='store_true',
                    help="Konfirmasi mulai training. Tanpa ini skrip cuma "
@@ -147,6 +213,15 @@ def main():
     p.add_argument('--batch', type=int, default=32)
     p.add_argument('--lr', type=float, default=1e-3,
                    help="Learning rate Adam (default: 0.001).")
+    p.add_argument('--balance', action='store_true',
+                   help="Beri bobot lebih besar ke kelas yang sampelnya "
+                        "sedikit - terutama surprise - di CrossEntropyLoss. "
+                        "Mati secara bawaan.")
+    p.add_argument('--select', choices=['acc', 'macro'], default='acc',
+                   help="Metrik penentu checkpoint terbaik: 'acc' akurasi "
+                        "biasa (bawaan, sama seperti versi lama), 'macro' "
+                        "rata-rata akurasi per kelas - lebih adil ke kelas "
+                        "surprise yang sampelnya sedikit.")
     p.add_argument('--workers', type=int, default=0,
                    help="Worker pemuat data. MFCC dihitung di CPU saat memuat, "
                         "jadi ini bisa membantu. Diukur di mesin ini untuk "
@@ -167,6 +242,9 @@ def main():
     print(f"[rencana] data    : {data}")
     print(f"[rencana] epochs  : {args.epochs}, batch {args.batch}, "
           f"lr {args.lr}, workers {args.workers}")
+    print(f"[rencana] loss    : "
+          f"{'berbobot kelas' if args.balance else 'biasa'}, "
+          f"checkpoint dari {args.select}")
     print(f"[rencana] device  : {device}")
     print(f"[rencana] keluaran: {args.out}")
 

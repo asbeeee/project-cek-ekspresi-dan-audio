@@ -1,24 +1,36 @@
 """
-merge_datasets.py - gabungkan FER2013 dan KDEF jadi satu dataset latih.
+merge_datasets.py - gabungkan beberapa dataset wajah jadi satu dataset latih.
 
-Menghasilkan webcam/datasets/combined/<split>/<kelas>/ yang berisi kedua
-sumber, siap dipakai YOLO klasifikasi.
+Menghasilkan webcam/datasets/combined/<split>/<kelas>/ yang berisi semua
+sumbernya, siap dipakai YOLO klasifikasi.
+
+SUMBER YANG TERSEDIA
+--------------------
+    fer2013plus  33500 gambar  48x48 abu-abu   label FER+ (10 anotator)
+    expw         37254 gambar  224x224 abu-abu wajah dipotong dari foto liar
+    kdef          2936 gambar  224x224 warna   studio, berpose
+    fer2013      35887 gambar  48x48 abu-abu   label asli, 1 anotator
+
+Bawaannya fer2013plus + expw + kdef. fer2013 masih terdaftar supaya baseline
+lama bisa dibuat ulang, TAPI jangan dipakai bersama fer2013plus: keduanya
+gambar yang persis sama dengan label berbeda, jadi menggabungnya berarti
+memberi model dua jawaban yang bertabrakan untuk satu wajah. Skrip ini
+menolak kombinasi itu.
 
 DUA MASALAH YANG DITANGANI
 --------------------------
-1. Jumlahnya timpang jauh. FER2013 punya 28709 gambar latih, KDEF cuma 2013 -
-   perbandingan 14.3 : 1. Kalau digabung apa adanya, KDEF cuma 6.6% dari data
-   dan praktis tidak terasa. Karena itu KDEF diulang beberapa kali
-   (--kdef_repeat, default 4) sehingga porsinya naik ke sekitar 22%. Ultralytics
-   mengaugmentasi ulang tiap epoch, jadi salinan yang sama tidak dilihat model
-   secara identik.
+1. Jumlahnya timpang jauh. KDEF cuma 2013 gambar latih lawan puluhan ribu
+   dari sumber lain, jadi porsinya tenggelam. Karena itu KDEF diulang
+   beberapa kali (--repeat kdef=4, bawaannya 4). Ultralytics mengaugmentasi
+   ulang tiap epoch, jadi salinan yang sama tidak dilihat model secara
+   identik.
 
-2. Domainnya beda jauh. FER2013 itu 48x48 grayscale hasil jepretan liar; KDEF
-   224x224 berwarna, studio, berpose. Kalau warnanya dibiarkan, model bisa
-   ambil jalan pintas: "berwarna berarti KDEF, abu-abu berarti FER2013", lalu
-   belajar dua aturan terpisah alih-alih satu yang umum. Karena itu semuanya
-   dijadikan grayscale (--color untuk membatalkan). Beda resolusi masih ada,
-   tapi jauh lebih tidak kentara daripada beda warna.
+2. Domainnya beda jauh. KDEF 224x224 berwarna dan berpose; FER+ 48x48 abu-abu
+   hasil jepretan liar. Kalau warnanya dibiarkan, model bisa ambil jalan
+   pintas: "berwarna berarti KDEF, abu-abu berarti yang lain", lalu belajar
+   beberapa aturan terpisah alih-alih satu yang umum. Karena itu semuanya
+   dijadikan abu-abu (--color untuk membatalkan). Beda resolusi masih ada;
+   --imgsz bisa menyeragamkannya kalau memang mau.
 
 PENTING SOAL EVALUASI
 ---------------------
@@ -33,7 +45,8 @@ menyembunyikan pertukaran antar-domain:
 Contoh:
     python webcam/scripts/merge_datasets.py --dry_run
     python webcam/scripts/merge_datasets.py
-    python webcam/scripts/merge_datasets.py --kdef_repeat 6 --cap 3000
+    python webcam/scripts/merge_datasets.py --sources fer2013plus,kdef
+    python webcam/scripts/merge_datasets.py --repeat kdef=6 --cap 5000
     python webcam/scripts/merge_datasets.py --train --epochs 20
 """
 import argparse
@@ -49,9 +62,27 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 from common import EMOTIONS
 
-FER_DIR = PROJECT_ROOT / "webcam" / "datasets" / "fer2013"
-KDEF_DIR = PROJECT_ROOT / "webcam" / "datasets" / "kdef"
-DST_DEFAULT = PROJECT_ROOT / "webcam" / "datasets" / "combined"
+DATASETS = PROJECT_ROOT / "webcam" / "datasets"
+DST_DEFAULT = DATASETS / "combined"
+
+# Sumber yang dikenal. 'ulang' adalah pengulangan bawaan di split train.
+SUMBER = {
+    'fer2013plus': {'dir': DATASETS / "fer2013plus", 'ulang': 1},
+    'expw': {'dir': DATASETS / "expw", 'ulang': 1},
+    'kdef': {'dir': DATASETS / "kdef", 'ulang': 4},
+    'fer2013': {'dir': DATASETS / "fer2013", 'ulang': 1},
+}
+SUMBER_BAWAAN = ['fer2013plus', 'expw', 'kdef']
+
+# Pasangan yang tidak boleh dipakai bersama: gambarnya sama, labelnya beda.
+BENTROK = [('fer2013', 'fer2013plus')]
+
+CARA_BUAT = {
+    'fer2013plus': "python webcam/scripts/ferplus_build.py",
+    'expw': "python webcam/scripts/expw_build.py",
+    'kdef': "python webcam/scripts/kdefTrain.py",
+    'fer2013': "(unduh FER2013 dari Kaggle)",
+}
 
 SPLITS = ['train', 'val', 'test']
 IMG_EXT = {'.jpg', '.jpeg', '.png', '.bmp'}
@@ -70,52 +101,92 @@ def kumpulkan(root, split):
     return hasil
 
 
-def periksa_sumber():
-    for nama, root in [('fer2013', FER_DIR), ('kdef', KDEF_DIR)]:
+def periksa_sumber(nama_sumber):
+    for nama in nama_sumber:
+        root = SUMBER[nama]['dir']
         if not root.is_dir():
             raise SystemExit(
                 f"ERROR: dataset '{nama}' tidak ada di {root}\n"
-                f"       KDEF dibuat dengan: python webcam/scripts/kdefTrain.py")
+                f"       Buat dulu dengan: {CARA_BUAT[nama]}")
+
+    for a, b in BENTROK:
+        if a in nama_sumber and b in nama_sumber:
+            raise SystemExit(
+                f"ERROR: '{a}' dan '{b}' tidak boleh dipakai bersama.\n"
+                f"       Keduanya gambar yang SAMA dengan label berbeda, jadi "
+                f"model akan\n"
+                f"       menerima dua jawaban yang bertabrakan untuk satu "
+                f"wajah.\n"
+                f"       Pilih salah satu di --sources.")
 
 
-def rencana(args):
-    """Susun daftar tugas salin: (split, kelas, path_sumber, nama_tujuan)."""
+def sudah_abu_abu(root, contoh=20):
+    """Tebak apakah sumbernya sudah grayscale, dengan mencicipi beberapa berkas.
+
+    Gunanya supaya sumber yang memang sudah abu-abu (FER+, ExpW) bisa disalin
+    apa adanya tanpa dibaca-tulis ulang - jauh lebih cepat untuk puluhan ribu
+    berkas. Kalau ada satu saja yang berwarna, seluruh sumbernya diperlakukan
+    sebagai berwarna, jadi tebakan yang meleset bikin lambat, bukan bikin salah.
+    """
+    dilihat = 0
+    for split in SPLITS:
+        for kelas in EMOTIONS:
+            folder = root / split / kelas
+            if not folder.is_dir():
+                continue
+            for f in sorted(folder.iterdir())[:3]:
+                if f.suffix.lower() not in IMG_EXT:
+                    continue
+                img = cv2.imread(str(f), cv2.IMREAD_UNCHANGED)
+                if img is None:
+                    continue
+                if img.ndim == 3 and img.shape[2] >= 3:
+                    return False
+                dilihat += 1
+                if dilihat >= contoh:
+                    return True
+    return dilihat > 0
+
+
+def rencana(args, nama_sumber, ulang):
+    """Susun daftar tugas salin: (split, kelas, sumber, nama_tujuan, asal)."""
     rng = random.Random(args.seed)
     tugas = []
     hitung = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
 
     for split in SPLITS:
-        fer = kumpulkan(FER_DIR, split)
-        kdef = kumpulkan(KDEF_DIR, split)
+        for nama in nama_sumber:
+            berkas = kumpulkan(SUMBER[nama]['dir'], split)
 
-        for kelas in EMOTIONS:
-            berkas_fer = list(fer[kelas])
-            # Batasi kelas mayoritas FER2013 supaya tidak terlalu timpang.
-            # Hanya di train; val dan test dibiarkan utuh agar tetap bisa
-            # dibandingkan dengan hasil sebelumnya.
-            if split == 'train' and args.cap and len(berkas_fer) > args.cap:
-                rng.shuffle(berkas_fer)
-                berkas_fer = berkas_fer[:args.cap]
+            for kelas in EMOTIONS:
+                daftar = list(berkas[kelas])
 
-            for f in berkas_fer:
-                tugas.append((split, kelas, f, f"fer_{f.stem}.jpg", 'fer2013'))
-                hitung[split][kelas]['fer2013'] += 1
+                # Batasi kelas mayoritas supaya tidak terlalu timpang. Hanya
+                # di train; val dan test dibiarkan utuh supaya metriknya tetap
+                # mencerminkan sebaran aslinya.
+                if split == 'train' and args.cap and len(daftar) > args.cap:
+                    rng.shuffle(daftar)
+                    daftar = daftar[:args.cap]
 
-            # KDEF diulang hanya di train. Mengulang di val/test cuma membuat
-            # bobot metrik menyimpang tanpa menambah informasi.
-            ulang = args.kdef_repeat if split == 'train' else 1
-            for f in kdef[kelas]:
-                for i in range(ulang):
-                    akhiran = "" if i == 0 else f"_r{i + 1}"
-                    tugas.append((split, kelas, f, f"kdef_{f.stem}{akhiran}.jpg",
-                                  'kdef'))
-                    hitung[split][kelas]['kdef'] += 1
+                # Pengulangan hanya di train. Mengulang di val/test cuma
+                # membuat bobot metrik menyimpang tanpa menambah informasi.
+                n_ulang = ulang[nama] if split == 'train' else 1
+                for f in daftar:
+                    for i in range(n_ulang):
+                        akhiran = "" if i == 0 else f"_r{i + 1}"
+                        tugas.append((split, kelas, f,
+                                      f"{nama}_{f.stem}{akhiran}.jpg", nama))
+                        hitung[split][kelas][nama] += 1
 
     return tugas, hitung
 
 
-def salin(tugas, dst, grayscale):
-    """Jalankan daftar tugas. FER2013 disalin apa adanya karena sudah grayscale."""
+def salin(tugas, dst, grayscale, imgsz, abu_asli):
+    """Jalankan daftar tugas.
+
+    Sumber yang sudah abu-abu disalin apa adanya - kecuali kalau --imgsz minta
+    diubah ukurannya.
+    """
     total = len(tugas)
     selesai = 0
     gagal = []
@@ -126,7 +197,8 @@ def salin(tugas, dst, grayscale):
     for split, kelas, sumber, nama, asal in tugas:
         tujuan = dst / split / kelas / nama
         try:
-            if asal == 'fer2013' or not grayscale:
+            apa_adanya = (abu_asli.get(asal, False) or not grayscale) and not imgsz
+            if apa_adanya:
                 shutil.copy2(sumber, tujuan)
             else:
                 if sumber not in cache:
@@ -134,9 +206,16 @@ def salin(tugas, dst, grayscale):
                     if img is None:
                         gagal.append(sumber)
                         continue
-                    abu = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-                    # Ditulis 3 kanal supaya formatnya seragam dengan FER2013.
-                    cache[sumber] = cv2.cvtColor(abu, cv2.COLOR_GRAY2BGR)
+                    if grayscale:
+                        abu = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                        # Ditulis 3 kanal supaya formatnya seragam.
+                        img = cv2.cvtColor(abu, cv2.COLOR_GRAY2BGR)
+                    if imgsz and img.shape[0] != imgsz:
+                        interp = (cv2.INTER_AREA if img.shape[0] > imgsz
+                                  else cv2.INTER_CUBIC)
+                        img = cv2.resize(img, (imgsz, imgsz),
+                                         interpolation=interp)
+                    cache[sumber] = img
                 cv2.imwrite(str(tujuan), cache[sumber],
                             [cv2.IMWRITE_JPEG_QUALITY, 95])
         except OSError as e:
@@ -155,148 +234,226 @@ def salin(tugas, dst, grayscale):
     return selesai
 
 
-def cetak_tabel(hitung):
+def cetak_tabel(hitung, nama_sumber):
     w = max(9, max(len(k) for k in EMOTIONS))
+    lebar_kol = max(9, max(len(n) for n in nama_sumber))
+    garis = "-" * (w + (lebar_kol + 2) * (len(nama_sumber) + 1) + 9)
+
     for split in SPLITS:
-        total_fer = sum(hitung[split][k]['fer2013'] for k in EMOTIONS)
-        total_kdef = sum(hitung[split][k]['kdef'] for k in EMOTIONS)
-        if not (total_fer + total_kdef):
+        total_split = sum(hitung[split][k][n]
+                          for k in EMOTIONS for n in nama_sumber)
+        if not total_split:
             continue
         print()
         print(f"--- {split} ---")
-        print(f"{'kelas':<{w}}  {'fer2013':>9}  {'kdef':>9}  {'TOTAL':>9}  {'%kdef':>7}")
-        print("-" * (w + 42))
+        judul = f"{'kelas':<{w}}"
+        for n in nama_sumber:
+            judul += f"  {n:>{lebar_kol}}"
+        judul += f"  {'TOTAL':>{lebar_kol}}"
+        print(judul)
+        print(garis)
+
         for kelas in EMOTIONS:
-            f = hitung[split][kelas]['fer2013']
-            k = hitung[split][kelas]['kdef']
-            pct = 100.0 * k / (f + k) if (f + k) else 0.0
-            print(f"{kelas:<{w}}  {f:>9}  {k:>9}  {f + k:>9}  {pct:>6.1f}%")
-        print("-" * (w + 42))
-        pct = 100.0 * total_kdef / (total_fer + total_kdef)
-        print(f"{'TOTAL':<{w}}  {total_fer:>9}  {total_kdef:>9}  "
-              f"{total_fer + total_kdef:>9}  {pct:>6.1f}%")
+            n_per = [hitung[split][kelas][n] for n in nama_sumber]
+            baris = f"{kelas:<{w}}"
+            for v in n_per:
+                baris += f"  {v:>{lebar_kol}}"
+            baris += f"  {sum(n_per):>{lebar_kol}}"
+            print(baris)
+
+        print(garis)
+        total_per = [sum(hitung[split][k][n] for k in EMOTIONS)
+                     for n in nama_sumber]
+        baris = f"{'TOTAL':<{w}}"
+        for v in total_per:
+            baris += f"  {v:>{lebar_kol}}"
+        baris += f"  {sum(total_per):>{lebar_kol}}"
+        print(baris)
+
+        # Porsi tiap sumber, angka yang paling sering ditanyakan waktu
+        # menimbang --repeat.
+        baris = f"{'%':<{w}}"
+        for v in total_per:
+            baris += f"  {100.0 * v / total_split:>{lebar_kol - 1}.1f}%"
+        print(baris)
+
+        # Ketimpangan antar kelas - alasan utama --cap ada.
+        per_kelas = [sum(hitung[split][k][n] for n in nama_sumber)
+                     for k in EMOTIONS]
+        if min(per_kelas) > 0:
+            i_min = per_kelas.index(min(per_kelas))
+            i_max = per_kelas.index(max(per_kelas))
+            print(f"    ketimpangan {max(per_kelas) / min(per_kelas):.1f}x  "
+                  f"({EMOTIONS[i_max]} {max(per_kelas)} lawan "
+                  f"{EMOTIONS[i_min]} {min(per_kelas)})")
 
 
 def pilih_device(pilihan):
-    """'auto' -> pakai GPU kalau ada. Skrip lama di repo ini mengunci 'cpu',
-    padahal baseline FER2013 butuh 2.4 jam di CPU untuk 20 epoch."""
+    """'auto' -> '0' kalau ada GPU. Nilainya gaya ultralytics, bukan torch."""
     if pilihan != 'auto':
         return pilihan
     try:
         import torch
         if torch.cuda.is_available():
-            print(f"[device ] GPU terdeteksi: {torch.cuda.get_device_name(0)}")
-            return '0'
+            print(f"[device] GPU terdeteksi: {torch.cuda.get_device_name(0)}")
+            return 0
     except ImportError:
         pass
-    print("[device ] tidak ada GPU, pakai CPU (jauh lebih lambat).")
+    print("[device] tidak ada GPU, pakai CPU (jauh lebih lambat).")
     return 'cpu'
 
 
 def latih(dst, args):
     from ultralytics import YOLO
 
-    bobot = PROJECT_ROOT / "webcam" / "models" / "yolov8n-cls.pt"
-    model = YOLO(str(bobot) if bobot.exists() else "yolov8n-cls.pt")
+    device = pilih_device(args.device)
+    model = YOLO('yolo11n-cls.pt')
     hasil = model.train(
         data=str(dst),
         epochs=args.epochs,
         imgsz=224,
         batch=args.batch,
-        patience=10,
-        device=pilih_device(args.device),
-        project='runs/emotion',
-        name='merged_baseline',
-        workers=0,
+        device=device,
+        project='runs/combined',
+        name='gabungan',
     )
-    print("\nTraining selesai!")
-    print(f"Best model: {hasil.save_dir}/weights/best.pt")
-    print("\nUltralytics menulis ke runs/ yang ada di .gitignore. Salin model")
-    print("yang mau dipakai ke webcam/models/ supaya ikut tersimpan di git:")
-    print(f"  cp -r {hasil.save_dir} webcam/models/merged_baseline")
+    print("\nTraining selesai.")
+    print("Ultralytics menaruh hasilnya di runs/classify/runs/combined/gabungan/,")
+    print("bukan persis di project= yang dioper. Salin best.pt ke")
+    print("webcam/models/ kalau modelnya mau dipakai.")
+    return hasil
+
+
+def urai_repeat(daftar, nama_sumber):
+    """Ubah ['kdef=6', 'expw=2'] jadi dict pengulangan per sumber."""
+    ulang = {n: SUMBER[n]['ulang'] for n in nama_sumber}
+    for item in daftar or []:
+        if '=' not in item:
+            raise SystemExit(f"ERROR: --repeat harus berbentuk nama=angka, "
+                             f"dapatnya '{item}'")
+        nama, _, nilai = item.partition('=')
+        if nama not in SUMBER:
+            raise SystemExit(f"ERROR: sumber '{nama}' di --repeat tidak "
+                             f"dikenal. Pilihannya: {', '.join(SUMBER)}")
+        if nama not in nama_sumber:
+            raise SystemExit(f"ERROR: --repeat menyebut '{nama}' yang tidak "
+                             f"ada di --sources.")
+        try:
+            n = int(nilai)
+        except ValueError:
+            raise SystemExit(f"ERROR: pengulangan '{nilai}' bukan angka.")
+        if n < 1:
+            raise SystemExit(f"ERROR: pengulangan harus >= 1, dapatnya {n}.")
+        ulang[nama] = n
+    return ulang
 
 
 def main():
     p = argparse.ArgumentParser(
-        description="Gabungkan FER2013 dan KDEF jadi satu dataset latih.",
+        description="Gabungkan beberapa dataset wajah jadi satu folder latih.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="Contoh:\n"
-               "  python webcam/scripts/merge_datasets.py --dry_run\n"
-               "  python webcam/scripts/merge_datasets.py --kdef_repeat 6 --cap 3000")
+        epilog="Sumber yang dikenal: " + ", ".join(SUMBER) + "\n"
+               "fer2013 dan fer2013plus tidak boleh bersamaan - gambarnya "
+               "sama, labelnya beda.")
+    p.add_argument('--sources', '--sumber', dest='sources',
+                   default=",".join(SUMBER_BAWAAN),
+                   help="Daftar sumber dipisah koma (default: "
+                        + ",".join(SUMBER_BAWAAN) + ").")
     p.add_argument('--dst', default=str(DST_DEFAULT), help="Folder tujuan.")
+    p.add_argument('--repeat', action='append', metavar='NAMA=N',
+                   help="Pengulangan satu sumber di split train, misalnya "
+                        "'kdef=6'. Bisa diulang untuk beberapa sumber. "
+                        "Bawaannya kdef=4, sisanya 1.")
     p.add_argument('--kdef_repeat', '--kdef-repeat', dest='kdef_repeat',
-                   type=int, default=4, metavar='N',
-                   help="Berapa kali KDEF diulang di split train (default: 4). "
-                        "1 = tanpa pengulangan.")
+                   type=int, default=None, metavar='N',
+                   help="Jalan pintas lama untuk --repeat kdef=N.")
     p.add_argument('--cap', type=int, default=0, metavar='N',
-                   help="Batas maksimal gambar FER2013 per kelas di train, "
-                        "untuk meredam ketimpangan kelas (default: 0 = tanpa batas).")
+                   help="Batas gambar per kelas per sumber di split train. "
+                        "0 = tanpa batas (default).")
     p.add_argument('--color', action='store_true',
-                   help="Pertahankan warna KDEF. Tidak disarankan: warna jadi "
-                        "petunjuk asal dataset yang bisa dijadikan jalan pintas "
-                        "oleh model.")
+                   help="Jangan ubah ke abu-abu. Lihat penjelasan masalah "
+                        "nomor 2 di atas berkas ini sebelum memakainya.")
+    p.add_argument('--imgsz', type=int, default=0, metavar='N',
+                   help="Seragamkan ukuran semua gambar ke N x N. 0 = biarkan "
+                        "apa adanya (default). Sumbernya campur 48x48 dan "
+                        "224x224; ultralytics toh mengubah ukurannya saat "
+                        "memuat, jadi ini cuma perlu kalau mau memastikan "
+                        "resolusi tidak jadi petunjuk asal dataset.")
     p.add_argument('--seed', type=int, default=42,
-                   help="Seed untuk pemilihan sampel saat --cap (default: 42).")
+                   help="Seed pengacakan untuk --cap (default: 42).")
     p.add_argument('--force', action='store_true',
                    help="Timpa folder tujuan kalau sudah ada.")
-    p.add_argument('--dry_run', '--dry-run', dest='dry_run', action='store_true',
-                   help="Tampilkan rencana tanpa menyalin berkas.")
+    p.add_argument('--dry_run', '--dry-run', dest='dry_run',
+                   action='store_true',
+                   help="Cuma tampilkan tabelnya, tidak menyalin apa pun.")
     p.add_argument('--train', action='store_true',
-                   help="Langsung latih YOLO setelah dataset tergabung.")
+                   help="Langsung latih setelah penggabungan selesai.")
     p.add_argument('--epochs', type=int, default=20,
-                   help="Jumlah epoch kalau --train dipakai (default: 20).")
+                   help="Epoch, kalau --train dipakai (default: 20).")
     p.add_argument('--device', default='auto',
-                   help="Perangkat latih: 'auto' (GPU kalau ada), 'cpu', "
-                        "atau indeks GPU seperti '0' (default: auto).")
+                   help="'auto' (GPU kalau ada), 'cpu', atau '0'.")
     p.add_argument('--batch', type=int, default=32,
-                   help="Ukuran batch (default: 32; naikkan kalau pakai GPU).")
+                   help="Batch, kalau --train dipakai (default: 32).")
     args = p.parse_args()
 
-    periksa_sumber()
+    nama_sumber = [s.strip() for s in args.sources.split(',') if s.strip()]
+    if not nama_sumber:
+        raise SystemExit("ERROR: --sources kosong.")
+    for n in nama_sumber:
+        if n not in SUMBER:
+            raise SystemExit(f"ERROR: sumber '{n}' tidak dikenal. "
+                             f"Pilihannya: {', '.join(SUMBER)}")
+    if len(set(nama_sumber)) != len(nama_sumber):
+        raise SystemExit("ERROR: ada sumber yang disebut dua kali di --sources.")
+
+    periksa_sumber(nama_sumber)
+
+    if args.kdef_repeat is not None:
+        args.repeat = (args.repeat or []) + [f"kdef={args.kdef_repeat}"]
+    ulang = urai_repeat(args.repeat, nama_sumber)
+
     dst = Path(args.dst)
+    print(f"[sumber ] {', '.join(nama_sumber)}")
+    print(f"[ulang  ] " + ", ".join(f"{n} x{ulang[n]}" for n in nama_sumber))
+    print(f"[warna  ] {'dibiarkan' if args.color else 'diubah ke abu-abu'}"
+          + (f", diseragamkan ke {args.imgsz}x{args.imgsz}" if args.imgsz
+             else ""))
 
-    print(f"[sumber ] {FER_DIR}")
-    print(f"[sumber ] {KDEF_DIR}")
-    print(f"[tujuan ] {dst}")
-    print(f"[opsi   ] kdef_repeat={args.kdef_repeat}, cap={args.cap or 'tidak ada'}, "
-          f"warna={'ya' if args.color else 'tidak (grayscale)'}")
-
-    if args.color:
-        print("[warning] --color aktif: KDEF tetap berwarna sementara FER2013 "
-              "grayscale.\n           Model bisa menebak asal dataset dari "
-              "warnanya dan belajar dua aturan terpisah.")
-
-    tugas, hitung = rencana(args)
-    cetak_tabel(hitung)
+    tugas, hitung = rencana(args, nama_sumber, ulang)
+    cetak_tabel(hitung, nama_sumber)
+    print(f"\nTotal berkas yang akan ditulis: {len(tugas)}")
 
     if args.dry_run:
-        print(f"\n[dry-run] {len(tugas)} berkas akan ditulis. Tidak ada yang disalin.")
+        print("\n--dry_run: tidak ada berkas yang disalin.")
         return
 
     if dst.exists():
         if not args.force:
-            raise SystemExit(f"\nERROR: {dst} sudah ada. Jalankan dengan --force "
-                             f"untuk menimpanya.")
-        print(f"\n[hapus  ] membersihkan {dst}")
+            raise SystemExit(f"\nERROR: {dst} sudah ada. Pakai --force untuk "
+                             f"menimpanya.")
         shutil.rmtree(dst)
-
+        print(f"\n[bersih ] {dst} dihapus")
     for split in SPLITS:
         for kelas in EMOTIONS:
             (dst / split / kelas).mkdir(parents=True, exist_ok=True)
 
-    print()
-    ditulis = salin(tugas, dst, grayscale=not args.color)
-    print(f"\n[selesai] {ditulis} berkas ditulis ke {dst}")
+    abu_asli = {}
+    if not args.color:
+        for n in nama_sumber:
+            abu_asli[n] = sudah_abu_abu(SUMBER[n]['dir'])
+            if abu_asli[n]:
+                print(f"[cek    ] {n} sudah abu-abu, disalin apa adanya")
+
+    print(f"\n[salin  ] {len(tugas)} berkas ke {dst}")
+    salin(tugas, dst, not args.color, args.imgsz, abu_asli)
+
+    print(f"\nSelesai. Latih dengan:")
+    print(f"  python webcam/scripts/training_yolo_.py --yes --data {dst} "
+          f"--name gabungan")
 
     if args.train:
         latih(dst, args)
-    else:
-        print("\nLatih dengan:")
-        print("  python webcam/scripts/merge_datasets.py --train --epochs 20")
-        print("\nSetelah selesai, ukur di kedua test set secara terpisah:")
-        print("  python results_calculation.py face --no_cache \\")
-        print("      --visual_model webcam/models/merged_baseline/weights/best.pt")
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    main()
