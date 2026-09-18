@@ -151,8 +151,25 @@ WAVE_ENABLED = False
 
 AUDIO_INFER_INTERVAL = 1.0
 
-DEVICE = 'cpu'
+# 'auto' -> GPU kalau ada. Dulu terkunci 'cpu' padahal mesin ini punya
+# RTX 4060, jadi demo langsungnya mengolah tiap frame di CPU.
+DEVICE = 'auto'
 FACE_PAD = 0.20
+
+
+def pilih_device(pilihan):
+    """'auto' -> 'cuda' kalau ada GPU. Nilainya untuk torch, bukan ultralytics."""
+    if pilihan != 'auto':
+        return pilihan
+    try:
+        import torch
+        if torch.cuda.is_available():
+            print(f"[device] GPU terdeteksi: {torch.cuda.get_device_name(0)}")
+            return 'cuda'
+    except ImportError:
+        pass
+    print("[device] tidak ada GPU, pakai CPU.")
+    return 'cpu'
 
 
 # ===================================================================
@@ -761,7 +778,9 @@ def parse_args(argv=None):
                        default=VISUAL_MODEL_PATH, help="Path bobot YOLO klasifikasi wajah.")
     g_mdl.add_argument('--audio_model', '--audio-model', dest='audio_model',
                        default=AUDIO_MODEL_PATH, help="Path bobot CNN-MFCC audio.")
-    g_mdl.add_argument('--device', default=DEVICE, help="cpu atau cuda (default: cpu).")
+    g_mdl.add_argument('--device', default=DEVICE,
+                       help="'auto' (GPU kalau ada), 'cpu', atau 'cuda' "
+                            "(default: auto).")
     g_mdl.add_argument('--imgsz', type=int, default=224, help="Ukuran input YOLO (default: 224).")
 
     g_rbt = p.add_argument_group("Respons robot (AiNex Hiwonder)")
@@ -808,7 +827,7 @@ def main(argv=None):
         GRAYSCALE_INPUT = args.grayscale
     TAU = args.tau
     TAU_CONF = args.tau_conf
-    DEVICE = args.device
+    DEVICE = pilih_device(args.device)
 
     total = 3 if args.no_speech else 4
 

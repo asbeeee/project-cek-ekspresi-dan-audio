@@ -868,3 +868,84 @@ BELUM  Fusion masih memakai model audio speaker-dependent. Kalau angka fusion
       --audio_model best_audio_cnn_spk.pt. Perlu diingat pasangan wajah-suara
       di mode fusion memang sintetis, jadi angkanya punya batasan sendiri.
 
+
+===============================================================================
+17. PEMBERSIHAN SISA-SISA (18 September 2026)
+===============================================================================
+
+Menutup sebagian besar daftar di bagian 9 yang sejak awal belum ditindaklanjuti.
+
+UBAH  device tidak lagi terkunci 'cpu'.
+
+      fusion_webcam.py      : DEVICE 'cpu' -> 'auto', plus fungsi
+                              pilih_device(). Ini demo langsung yang mengolah
+                              tiap frame, jadi paling terasa. --device tetap
+                              ada kalau mau memaksa cpu.
+      webcam/scripts/kdefTrain.py : device='cpu' dan workers=0 yang ditulis
+                              langsung di model.train() diganti --device
+                              (bawaan auto) dan --workers (bawaan 4).
+
+      results_calculation.py SENGAJA TETAP 'cpu' secara bawaan, cuma ditambah
+      opsi --device. Alasannya beda dengan yang lain: angka di results/*.csv
+      dan di laporan dihitung di CPU. Inferensi GPU bisa menggeser argmax pada
+      sampel yang skor dua kelas teratasnya nyaris seri, jadi angkanya berubah
+      tipis tanpa sebab yang kelihatan. Kalau mau pindah ke GPU, hitung ulang
+      SEMUA angkanya dengan cara yang sama, jangan sebagian.
+
+      Device sekarang ikut masuk sidik jari cache, jadi hasil inferensi CPU
+      tidak akan dipakai ulang diam-diam untuk permintaan GPU.
+
+      Sudah diuji regresi: 'results_calculation.py audio --no_cache' dengan
+      bawaan masih menghasilkan accuracy 0.6419 dan macro-F1 0.6632, sama
+      persis dengan angka yang sudah tercatat.
+
+UBAH  results_calculation.py - dataset visual bawaan fer2013 -> combined.
+      Menjalankan 'results_calculation.py face' tanpa argumen tadinya mengukur
+      di webcam/datasets/fer2013, yaitu FER2013 dengan LABEL ASLI. Model yang
+      dipakai sekarang dilatih dengan label FER+, jadi angkanya jadi campuran
+      dua sistem label tanpa peringatan apa pun. Bawaannya sekarang
+      webcam/datasets/combined, sama dengan data latihnya.
+
+UBAH  webcam/scripts/merge_datasets.py - yolo11n-cls.pt -> yolov8n-cls.pt.
+      training_yolo_.py memakai yolov8n sementara --train di merge_datasets.py
+      memakai yolo11n, jadi dua jalur latih menghasilkan arsitektur berbeda dan
+      hasilnya tidak bisa dibandingkan langsung. Sekarang keduanya yolov8n dan
+      sama-sama memakai berkas lokal di webcam/models/ kalau ada. Model yang
+      dipakai di laporan dilatih lewat training_yolo_.py, jadi memang yolov8n.
+
+
+===============================================================================
+18. YANG MASIH TERBUKA (per 18 September 2026)
+===============================================================================
+
+Menggantikan daftar di bagian 9, yang isinya sudah dikerjakan semua.
+
+- RESPONS ROBOT MASIH DIMATIKAN. WAVE_ENABLED = False di fusion_webcam.py, dan
+  blok pemanggil trigger_wave() di loop utama masih dikomentari. Padahal
+  respons robot ikut disebut di judul proyek. Ini keputusan lingkup, bukan
+  pekerjaan teknis: kalau robot ikut diuji sidang, hidupkan dan uji; kalau
+  tidak, tulis tegas di laporan bahwa bagian itu tidak termasuk.
+
+- results/figur_model_wajah.png dan figur_fusion.png masih hasil 11 September,
+  dibuat dengan model wajah dan audio yang LAMA. Isinya tidak salah untuk
+  perbandingan yang dulu, tapi jangan dipakai mewakili sistem yang sekarang.
+  Buat ulang dengan 'python results_figures.py --jpg' - perlu inferensi ulang,
+  jadi agak lama.
+
+- Fusion belum diukur dengan model audio speaker-independent. Perintahnya:
+      python results_calculation.py fusion \
+          --audio_model audio/models/best_audio_cnn_spk.pt \
+          --audio_data audio/datasets/audio_emotion_spk \
+          --data webcam/datasets/combined --tag spk --sweep
+  Alpha terbaiknya kemungkinan bergeser ke arah visual, karena modalitas
+  audionya sekarang lebih lemah. Jangan diduga - sapu saja.
+
+- webcam/datasets/expw_raw/origin.7z.001 sampai .008 masih ada padahal origin/
+  sudah diekstrak penuh. Aman dihapus; dibiarkan karena itu berkas unduhan
+  asli.
+
+- Kelas jijik di model wajah masih lemah (F1 0.3287) walau jumlah datanya naik
+  dari 175 ke 4114. Penyebabnya mutu label ExpW, bukan jumlah data, jadi
+  menambah data dari sumber yang sama tidak akan menolong. Ini temuan untuk
+  ditulis, bukan bug untuk dikejar.
+

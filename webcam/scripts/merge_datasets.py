@@ -307,7 +307,11 @@ def latih(dst, args):
     from ultralytics import YOLO
 
     device = pilih_device(args.device)
-    model = YOLO('yolo11n-cls.pt')
+    # Harus sama dengan training_yolo_.py. Sebelumnya di sini yolo11n
+    # sementara di sana yolov8n, jadi dua jalur latih menghasilkan arsitektur
+    # berbeda dan hasilnya tidak bisa dibandingkan langsung.
+    bobot_awal = PROJECT_ROOT / "webcam" / "models" / "yolov8n-cls.pt"
+    model = YOLO(str(bobot_awal) if bobot_awal.exists() else 'yolov8n-cls.pt')
     hasil = model.train(
         data=str(dst),
         epochs=args.epochs,

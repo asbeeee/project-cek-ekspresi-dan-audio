@@ -42,6 +42,7 @@ from common import EMOTIONS, load_audio_cnn, load_wav_mfcc
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 FER_DIR = PROJECT_ROOT / "webcam" / "datasets" / "fer2013"
+COMBINED_DIR = PROJECT_ROOT / "webcam" / "datasets" / "combined"
 AUDIO_DIR = PROJECT_ROOT / "audio" / "datasets" / "audio_emotion"
 # Nama FOLDER-nya yang menentukan model mana, bukan "best.pt"-nya - tiap run
 # ultralytics punya best.pt sendiri. Harus sama dengan fusion_webcam.py.
@@ -59,7 +60,27 @@ ALPHA = 0.50
 TAU = 0.20
 TAU_CONF = 0.40
 
+# Sengaja 'cpu' secara bawaan, BUKAN 'auto'. Angka di results/*.csv dan di
+# laporan dihitung di CPU; pindah ke GPU bisa menggeser hasil argmax di
+# beberapa sampel yang skornya nyaris seri, jadi angkanya berubah tipis tanpa
+# sebab yang kelihatan. Pakai --device auto kalau memang mau lebih cepat dan
+# siap menghitung ulang semuanya dengan cara yang sama.
 DEVICE = 'cpu'
+
+
+def pilih_device(pilihan):
+    """'auto' -> 'cuda' kalau ada GPU. Nilainya untuk torch dan ultralytics."""
+    if pilihan != 'auto':
+        return pilihan
+    try:
+        import torch
+        if torch.cuda.is_available():
+            print(f"[device] GPU terdeteksi: {torch.cuda.get_device_name(0)}")
+            return 'cuda'
+    except ImportError:
+        pass
+    print("[device] tidak ada GPU, pakai CPU.")
+    return 'cpu'
 
 
 # ===================================================================
@@ -243,10 +264,10 @@ def kunci_cache(args, nama):
     """
     if nama == 'visual':
         bahan = (str(Path(args.visual_model).resolve()), str(args.data),
-                 str(args.prefix), str(args.imgsz))
+                 str(args.prefix), str(args.imgsz), DEVICE)
     else:
         bahan = (str(Path(args.audio_model).resolve()),
-                 str(getattr(args, 'audio_data', None)))
+                 str(getattr(args, 'audio_data', None)), DEVICE)
     return hashlib.sha1("|".join(bahan).encode()).hexdigest()[:8]
 
 
@@ -288,7 +309,7 @@ def infer_visual(split, model_path, imgsz=224, batch=64, data=None, prefix=None)
     if not Path(model_path).exists():
         raise SystemExit(f"ERROR: bobot YOLO tidak ada: {model_path}")
 
-    root = Path(data) if data else FER_DIR
+    root = Path(data) if data else COMBINED_DIR
     sampel = kumpulkan_sampel(root, split, IMG_EXT, prefix)
     print(f"[visual] {len(sampel)} gambar dari {root / split}"
           + (f" (prefix '{prefix}')" if prefix else ""))
@@ -462,7 +483,7 @@ def analisis_ambang(p_final, labels, tau, tau_conf):
 def mode_face(args):
     probs, labels = ambil_probs('visual', args.split, args)
     cm = confusion_matrix(labels, probs.argmax(axis=1), len(EMOTIONS))
-    sumber = Path(args.data).name if args.data else 'fer2013'
+    sumber = Path(args.data).name if args.data else COMBINED_DIR.name
     if args.prefix:
         sumber += f":{args.prefix.rstrip('_')}"
     nama = f"face_{args.tag}_{args.split}" if args.tag else f"face_{args.split}"
@@ -515,6 +536,10 @@ def mode_fusion(args):
 
 
 def main():
+    # Dideklarasikan di awal karena DEVICE juga dibaca di add_argument di bawah;
+    # Python menolak 'global' yang muncul setelah nama itu dipakai.
+    global DEVICE
+
     p = argparse.ArgumentParser(
         description="Hitung accuracy, precision, recall, dan F1-score untuk "
                     "model wajah, audio, dan fusion.",
@@ -547,7 +572,7 @@ def main():
                    default=str(AUDIO_MODEL), help="Path bobot CNN audio.")
     p.add_argument('--data', default=None, metavar='DIR',
                    help="Folder dataset VISUAL saja, strukturnya "
-                        "<split>/<kelas>/. Default: webcam/datasets/fer2013. "
+                        "<split>/<kelas>/. Default: webcam/datasets/combined. "
                         "Untuk audio pakai --audio_data.")
     p.add_argument('--audio_data', '--audio-data', dest='audio_data',
                    default=None, metavar='DIR',
@@ -561,11 +586,19 @@ def main():
     p.add_argument('--tag', default=None, metavar='NAMA',
                    help="Akhiran nama berkas hasil di results/, supaya "
                         "perbandingan antar-model tidak saling menimpa.")
+    p.add_argument('--device', default=DEVICE,
+                   help="'auto' (GPU kalau ada), 'cpu', atau 'cuda'. Bawaannya "
+                        "'cpu' supaya angkanya sebanding dengan hasil lama - "
+                        "lihat catatan di dekat DEVICE.")
     p.add_argument('--plot', action='store_true',
                    help="Simpan confusion matrix sebagai PNG.")
     p.add_argument('--no_cache', '--no-cache', dest='no_cache', action='store_true',
                    help="Abaikan cache, jalankan inferensi ulang.")
     args = p.parse_args()
+
+    # Device ikut masuk sidik jari cache: hasil inferensi CPU dan GPU bisa
+    # berbeda tipis, jadi jangan sampai yang satu dipakai ulang untuk yang lain.
+    DEVICE = pilih_device(args.device)
 
     if args.mode in ('face', 'all'):
         mode_face(args)

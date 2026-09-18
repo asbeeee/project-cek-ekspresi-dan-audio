@@ -430,13 +430,28 @@ def latih(dst, args):
         imgsz=args.imgsz or 224,
         batch=32,
         patience=10,
-        device='cpu',
+        device=pilih_device(args.device),
         project='runs/emotion',
         name='kdef_baseline',
-        workers=0,
+        workers=args.workers,
     )
     print("\nTraining selesai!")
     print(f"Best model: {hasil.save_dir}/weights/best.pt")
+
+
+def pilih_device(pilihan):
+    """'auto' -> 0 kalau ada GPU. Nilainya gaya ultralytics, bukan torch."""
+    if pilihan != 'auto':
+        return pilihan
+    try:
+        import torch
+        if torch.cuda.is_available():
+            print(f"[device] GPU terdeteksi: {torch.cuda.get_device_name(0)}")
+            return 0
+    except ImportError:
+        pass
+    print("[device] tidak ada GPU, pakai CPU (jauh lebih lambat).")
+    return 'cpu'
 
 
 def main():
@@ -475,6 +490,12 @@ def main():
                    help="Timpa folder tujuan kalau sudah ada.")
     p.add_argument('--dry_run', '--dry-run', dest='dry_run', action='store_true',
                    help="Tampilkan rencana pembagian tanpa menulis berkas.")
+    p.add_argument('--device', default='auto',
+                   help="'auto' (GPU kalau ada), 'cpu', atau '0'. Dulu "
+                        "terkunci 'cpu' padahal mesin ini punya GPU.")
+    p.add_argument('--workers', type=int, default=4,
+                   help="Worker pemuat data saat --train (default: 4). Dulu "
+                        "terkunci 0, yang membuat GPU banyak menganggur.")
     p.add_argument('--train', action='store_true',
                    help="Langsung latih YOLO setelah dataset tersusun.")
     p.add_argument('--epochs', type=int, default=20,
