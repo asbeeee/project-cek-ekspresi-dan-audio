@@ -794,3 +794,77 @@ BELUM  Model speaker-independent-nya BELUM dilatih. Perintahnya:
       seharusnya - yang sekarang terlalu tinggi karena penutur yang sama ada di
       train dan test.
 
+
+===============================================================================
+16. HASIL MODEL SPEAKER-INDEPENDENT (18 September 2026)
+===============================================================================
+
+Model dilatih di audio/datasets/audio_emotion_spk/, disimpan sebagai
+audio/models/best_audio_cnn_spk.pt. Arsitektur dan cara latihnya sama persis
+dengan model speaker-dependent; yang berbeda cuma cara membagi datanya.
+
+        pembagian              accuracy   macro F1
+        speaker-dependent        0.6419     0.6632
+        speaker-independent      0.4778     0.4387
+        selisih                 -0.1641    -0.2245
+
+      F1 per kelas, diurutkan dari yang paling parah jatuhnya:
+
+        kelas       spk-dep   spk-indep   selisih   n test
+        surprise     0.8990      0.3958   -0.5032       47
+        fear         0.5574      0.1765   -0.3810      243
+        sad          0.6339      0.3313   -0.3026      243
+        disgust      0.5815      0.4432   -0.1384      243
+        neutral      0.6512      0.5554   -0.0958      245
+        angry        0.7251      0.6367   -0.0884      243
+        happy        0.5944      0.5321   -0.0623      243
+
+TEMUAN TERPENTING SESI INI: surprise jatuh dari 0.8990 ke 0.3958.
+      Di bagian 12 angka 0.8990 itu dicatat sebagai keberhasilan menambal kelas
+      surprise dengan SAVEE dan TESS. Ternyata sebagian besar bukan pengenalan
+      emosi, melainkan hafalan suara: 400 dari 652 berkas surprise berasal dari
+      TESS, yang cuma punya 2 penutur dan mengucapkan 200 kata yang sama untuk
+      tiap emosi. Waktu pembagiannya per berkas, hampir tiap berkas surprise di
+      test punya kembaran di train dengan penutur, kata, dan emosi yang sama.
+
+      Jadi kelas yang kelihatan paling bagus di laporan justru kelas yang
+      angkanya paling tidak bisa dipercaya. Ini pembenaran paling jelas kenapa
+      pembagian per penutur harus ikut dilaporkan.
+
+      Tambahan SAVEE dan TESS tetap berguna - accuracy speaker-dependent naik
+      dari 0.5939 ke 0.6419, dan itu diukur dengan cara yang sama sebelum dan
+      sesudah. Yang perlu dikoreksi cuma cara membaca angka surprise-nya.
+
+BARU  results/figur_audio_penutur.png dan .jpg
+      Dua panel: F1 per kelas (dumbbell menurun) dan confusion matrix model
+      speaker-independent. Dirender dengan:
+        python results_figures.py --penutur
+
+UBAH  results_figures.py - dumbbell() dapat parameter turun=
+      Angka label selama ini ditaruh di ujung KANAN batang, dengan anggapan
+      nilainya selalu naik. Di perbandingan yang menurun, ujung kanan justru
+      titik "sebelum", jadi angka 0.396 tercetak menempel di titik 0.899.
+      Dengan turun=True angkanya menempel di titik "sesudah", di sisi yang
+      menjauh dari titik "sebelum". Bawaannya tetap False, dan figur lama sudah
+      dicek ulang: hasil render figur_sesi_18sep.png byte-nya identik.
+
+PERBAIKAN  results_calculation.py - dua cacat yang bikin angka salah diam-diam.
+
+      1. --data cuma berlaku untuk dataset VISUAL. Folder audio terkunci di
+         konstanta AUDIO_DIR dan tidak bisa diganti dari baris perintah. Jadi
+         'results_calculation.py audio --data <folder spk>' diam-diam tetap
+         mengukur di test set speaker-dependent - yang sebagian berkasnya
+         dipakai melatih model spk itu. Angka pertama yang keluar, 0.6829,
+         salah karena ini. Sekarang ada --audio_data, dan folder audionya ikut
+         masuk sidik jari cache supaya tidak tertukar.
+
+      2. mode_audio() mengabaikan --tag dan selalu menulis ke
+         metrics_audio_<split>.csv. Mengevaluasi model audio kedua karena itu
+         MENIMPA hasil model pertama tanpa peringatan apa pun. mode_face()
+         sudah memakai --tag sejak awal; sekarang mode_audio() sama.
+
+BELUM  Fusion masih memakai model audio speaker-dependent. Kalau angka fusion
+      yang speaker-independent juga dibutuhkan, jalankan ulang fusion dengan
+      --audio_model best_audio_cnn_spk.pt. Perlu diingat pasangan wajah-suara
+      di mode fusion memang sintetis, jadi angkanya punya batasan sendiri.
+

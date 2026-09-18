@@ -78,6 +78,30 @@ TESS cuma punya 2 penutur, jadi masuk train saja - dengan dua orang, menaruh
 salah satunya di test tidak mengukur apa pun. Akibatnya kelas `surprise` di
 test menyusut dari 289 jadi 47 berkas. Rinciannya di `DATASETS.txt` bagian B6.
 
+Latih dan ukur modelnya terpisah dari yang speaker-dependent:
+
+```bash
+python audio/scripts/train_audio_cnn.py --yes \
+    --data audio/datasets/audio_emotion_spk \
+    --out audio/models/best_audio_cnn_spk.pt --workers 4
+
+python results_calculation.py audio \
+    --audio_model audio/models/best_audio_cnn_spk.pt \
+    --audio_data audio/datasets/audio_emotion_spk --tag spk
+```
+
+Hasilnya (gambar: `results/figur_audio_penutur.png`):
+
+| pembagian | accuracy | macro F1 |
+|-----------|---------:|---------:|
+| speaker-dependent | 0.6419 | 0.6632 |
+| speaker-independent | **0.4778** | **0.4387** |
+
+Turun 16.4pp accuracy dan 22.5pp macro-F1. Yang paling jatuh adalah `surprise`,
+dari 0.8990 ke 0.3958 - 400 dari 652 berkasnya berasal dari TESS, jadi angka
+lamanya sebagian besar hafalan suara. Laporkan **kedua** angka berdampingan;
+yang speaker-independent itu yang menggambarkan robot bertemu orang asing.
+
 `organize_audio.py` melewati dataset yang foldernya belum ada, jadi aman
 dijalankan walau baru punya sebagian. `split_audio.py` MENGHAPUS `train/`,
 `val/`, dan `test/` lama sebelum mengisi ulang - harus begitu, karena begitu

@@ -7,6 +7,7 @@ menyimpan dua gambar siap tempel ke laporan:
     results/figur_model_wajah.png   perbandingan baseline vs gabungan
     results/figur_fusion.png        perbandingan wajah / audio / fusion
     results/figur_sesi_18sep.png    sebelum vs sesudah sesi 18 September 2026
+    results/figur_audio_penutur.png speaker-dependent vs speaker-independent
 
 Figur ketiga dibaca dari CSV di results/, bukan dari cache probabilitas, jadi
 '--sesi' bisa dipakai untuk merendernya sendiri tanpa inferensi ulang. CSV-nya
@@ -161,8 +162,14 @@ def metrik(probs, labels):
 # ===================================================================
 def dumbbell(ax, label, sebelum, sesudah, judul, catatan=None,
              nama_sebelum='baseline (FER2013)',
-             nama_sesudah='gabungan (FER+KDEF)', xmax=1.12):
-    """Sebelum -> sesudah per item. Satu hue, dua shade."""
+             nama_sesudah='gabungan (FER+KDEF)', xmax=1.12, turun=False):
+    """Sebelum -> sesudah per item. Satu hue, dua shade.
+
+    `turun=True` untuk perbandingan yang nilainya MENURUN (mis. speaker-
+    dependent -> speaker-independent). Tanpa itu, angkanya ditaruh di ujung
+    kanan batang - padahal ujung kanan adalah titik "sebelum" kalau nilainya
+    turun, jadi angkanya kelihatan menempel di titik yang salah.
+    """
     y = np.arange(len(label))[::-1]
     for i, (s0, s1) in enumerate(zip(sebelum, sesudah)):
         ax.plot([s0, s1], [y[i], y[i]], color=AXIS, linewidth=2, zorder=1,
@@ -175,13 +182,24 @@ def dumbbell(ax, label, sebelum, sesudah, judul, catatan=None,
                edgecolor=SURFACE, linewidth=1.6, label=nama_sesudah)
 
     # Label langsung hanya di ujung "sesudah" - tidak setiap titik diberi angka.
+    # Angkanya menempel di titik "sesudah", di sisi yang menjauh dari titik
+    # "sebelum", jadi selalu jelas angka itu milik titik yang mana.
     for i, (s0, s1) in enumerate(zip(sebelum, sesudah)):
-        jauh = max(s0, s1)
-        ax.text(jauh + 0.02, y[i], f"{s1:.3f}", va='center', ha='left',
-                fontsize=8, color=INK_2)
+        if turun:
+            ax.text(s1 - 0.02, y[i], f"{s1:.3f}", va='center', ha='right',
+                    fontsize=8, color=INK_2)
+        else:
+            ax.text(max(s0, s1) + 0.02, y[i], f"{s1:.3f}", va='center',
+                    ha='left', fontsize=8, color=INK_2)
         if catatan and catatan[i]:
-            ax.text(min(s0, s1) - 0.02, y[i], catatan[i], va='center', ha='right',
-                    fontsize=7.5, color=MUTED)
+            # Catatan selalu di sisi luar titik "sebelum", supaya tidak pernah
+            # bertabrakan dengan angka di atas.
+            if turun:
+                ax.text(s0 + 0.02, y[i], catatan[i], va='center', ha='left',
+                        fontsize=7.5, color=MUTED)
+            else:
+                ax.text(min(s0, s1) - 0.02, y[i], catatan[i], va='center',
+                        ha='right', fontsize=7.5, color=MUTED)
 
     ax.set_yticks(y)
     ax.set_yticklabels(label, color=INK_2)
@@ -507,6 +525,86 @@ def gambar_sesi(path):
     simpan(fig, path)
 
 
+# ===================================================================
+# GAMBAR 4 - SPEAKER-DEPENDENT vs SPEAKER-INDEPENDENT (AUDIO)
+# ===================================================================
+def baca_confusion(nama):
+    """Baca results/confusion_<nama>.csv jadi array (7,7)."""
+    import csv
+
+    path = OUT_DIR / f"confusion_{nama}.csv"
+    if not path.is_file():
+        raise SystemExit(f"ERROR: {path} tidak ada.")
+    with open(path, newline='', encoding='utf-8') as f:
+        baris = list(csv.reader(f))
+    return np.array([[int(v) for v in r[1:]] for r in baris[1:]], dtype=np.int64)
+
+
+def gambar_penutur(path):
+    """Apa yang terjadi kalau penutur di test belum pernah terdengar saat latih.
+
+    Ini bukan perbandingan "model lama vs model baru" - keduanya model yang
+    sama arsitekturnya, dilatih dengan cara yang sama. Yang berbeda cuma CARA
+    MEMBAGI datanya. Angka yang turun di sini bukan kemunduran; yang di kiri
+    memang terlalu tinggi karena penutur yang sama ada di train dan di test.
+    """
+    dep = baca_metrik('audio_test')
+    ind = baca_metrik('audio_spk_test')
+    cm = baca_confusion('audio_spk_test')
+
+    fig = plt.figure(figsize=(13.2, 6.6))
+    gs = fig.add_gridspec(1, 2, width_ratios=[1.12, 1.0],
+                          left=0.095, right=0.975, top=0.715, bottom=0.135,
+                          wspace=0.34)
+
+    # --- Kiri: F1 per kelas, turun semua ---------------------------------
+    ax = fig.add_subplot(gs[0, 0])
+    urut = sorted(EMOTIONS, key=lambda k: dep['kelas'][k]['f1'], reverse=True)
+    label = [f"{EMOTIONS_ID[k]}\nn={ind['kelas'][k]['support']}" for k in urut]
+    dumbbell(ax, label,
+             [dep['kelas'][k]['f1'] for k in urut],
+             [ind['kelas'][k]['f1'] for k in urut],
+             'A. F1 per kelas - penutur dikenal vs penutur asing',
+             nama_sebelum='speaker-dependent (bagi per berkas)',
+             nama_sesudah='speaker-independent (bagi per penutur)',
+             xmax=1.08, turun=True)
+    ax.set_xlabel('F1-score', fontsize=8, color=INK_2)
+
+    # --- Kanan: salahnya ke mana -----------------------------------------
+    ax = fig.add_subplot(gs[0, 1])
+    heatmap(ax, cm, 'B. Confusion matrix - speaker-independent')
+
+    h, l = fig.axes[0].get_legend_handles_labels()
+    fig.legend(h, l, loc='lower left', frameon=False,
+               bbox_to_anchor=(0.095, 0.012), ncol=2, labelcolor=INK_2,
+               fontsize=8.5, handletextpad=0.4, columnspacing=1.6)
+
+    fig.suptitle('Audio: apa yang terjadi kalau penuturnya orang asing',
+                 fontsize=13.5, color=INK, x=0.095, ha='left', y=0.955)
+    fig.text(0.095, 0.888,
+             f"Arsitektur dan cara latihnya SAMA. Yang berbeda cuma cara "
+             f"membagi data. Accuracy {dep['accuracy']:.4f} -> "
+             f"{ind['accuracy']:.4f}, macro F1 {dep['macro_f1']:.4f} -> "
+             f"{ind['macro_f1']:.4f}.",
+             fontsize=8.5, color=MUTED, ha='left')
+    fig.text(0.095, 0.852,
+             'Angka yang turun ini bukan kemunduran - yang di kiri memang '
+             'terlalu tinggi, karena penutur yang sama ada di train dan di '
+             'test sekaligus.',
+             fontsize=8.5, color=MUTED, ha='left')
+    fig.text(0.095, 0.800,
+             'surprise jatuh paling jauh (0.899 -> 0.396). Itu bukan '
+             'kebetulan: 400 dari 652 berkas surprise berasal dari TESS, yang '
+             'cuma punya 2 penutur dan',
+             fontsize=8.5, color=MUTED, ha='left')
+    fig.text(0.095, 0.764,
+             'mengucapkan 200 kata yang sama untuk tiap emosi. Nilai 0.899 itu '
+             'sebagian besar hafalan suara, bukan pengenalan emosi. '
+             'Support-nya juga tinggal 47.',
+             fontsize=8.5, color=MUTED, ha='left')
+    simpan(fig, path)
+
+
 def simpan(fig, path):
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=200)
@@ -526,6 +624,11 @@ def main():
                    help="Bobot model gabungan (FER2013 + KDEF).")
     p.add_argument('--jpg', action='store_true',
                    help="Simpan .jpg selain .png (PNG lebih tajam untuk teks).")
+    p.add_argument('--penutur', action='store_true',
+                   help="Cuma render figur speaker-dependent vs "
+                        "speaker-independent untuk model audio. Dibaca dari "
+                        "CSV di results/, jadi tidak menjalankan inferensi "
+                        "ulang.")
     p.add_argument('--sesi', action='store_true',
                    help="Cuma render figur perbandingan sebelum/sesudah sesi "
                         "18 September 2026. Dibaca dari CSV di results/, jadi "
@@ -539,6 +642,11 @@ def main():
             gambar_sesi(OUT_DIR / f"figur_sesi_18sep.{e}")
         return
 
+    if args.penutur:
+        for e in ext:
+            gambar_penutur(OUT_DIR / f"figur_audio_penutur.{e}")
+        return
+
     for m in (args.base_model, args.merged_model):
         if not Path(m).exists():
             raise SystemExit(f"ERROR: bobot tidak ada: {m}")
@@ -548,6 +656,7 @@ def main():
         gambar_wajah(d, OUT_DIR / f"figur_model_wajah.{e}")
         gambar_fusion(d, args, OUT_DIR / f"figur_fusion.{e}")
         gambar_sesi(OUT_DIR / f"figur_sesi_18sep.{e}")
+        gambar_penutur(OUT_DIR / f"figur_audio_penutur.{e}")
 
 
 if __name__ == '__main__':

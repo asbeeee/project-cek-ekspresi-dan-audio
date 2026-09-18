@@ -520,8 +520,41 @@ CARA MELAPORKANNYA. Sajikan DUA angka berdampingan, jangan pilih salah satu:
     speaker-independent    bisakah mengenali emosi dari suara ORANG ASING?
 
 Yang kedua yang menggambarkan keadaan sebenarnya: robot AiNex hampir selalu
-bicara dengan orang yang belum pernah didengar modelnya. Angkanya akan lebih
-rendah - itu memang seharusnya, bukan kemunduran.
+bicara dengan orang yang belum pernah didengar modelnya.
+
+SUDAH DIUKUR 18 September 2026. Arsitektur dan cara latihnya sama persis; yang
+berbeda cuma cara membagi datanya.
+
+    pembagian              accuracy   macro F1
+    --------------------   --------   --------
+    speaker-dependent        0.6419     0.6632
+    speaker-independent      0.4778     0.4387
+    selisih                 -0.1641    -0.2245
+
+F1 per kelas, diurutkan dari yang paling parah jatuhnya:
+
+    kelas       spk-dep   spk-indep   selisih   n test
+    --------    -------   ---------   -------   ------
+    surprise     0.8990      0.3958   -0.5032       47
+    fear         0.5574      0.1765   -0.3810      243
+    sad          0.6339      0.3313   -0.3026      243
+    disgust      0.5815      0.4432   -0.1384      243
+    neutral      0.6512      0.5554   -0.0958      245
+    angry        0.7251      0.6367   -0.0884      243
+    happy        0.5944      0.5321   -0.0623      243
+
+SURPRISE JATUH PALING JAUH, DAN ITU BUKAN KEBETULAN. 400 dari 652 berkas
+surprise berasal dari TESS, yang cuma punya 2 penutur dan mengucapkan 200 kata
+yang sama untuk tiap emosi. Waktu pembagiannya per berkas, hampir tiap berkas
+surprise di test punya kembaran di train dengan penutur, kata, dan emosi yang
+sama - jadi nilai 0.8990 itu sebagian besar HAFALAN SUARA, bukan pengenalan
+emosi. Begitu TESS dikeluarkan dari test, angkanya jatuh ke 0.3958.
+
+Ini pembenaran paling jelas kenapa pembagian per penutur perlu dilaporkan:
+tanpa itu, kelas terbaik di laporan justru kelas yang angkanya paling tidak
+bisa dipercaya.
+
+Gambarnya ada di results/figur_audio_penutur.png.
 
 
 ===============================================================================

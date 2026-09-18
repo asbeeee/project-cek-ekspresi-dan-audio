@@ -245,7 +245,8 @@ def kunci_cache(args, nama):
         bahan = (str(Path(args.visual_model).resolve()), str(args.data),
                  str(args.prefix), str(args.imgsz))
     else:
-        bahan = (str(Path(args.audio_model).resolve()),)
+        bahan = (str(Path(args.audio_model).resolve()),
+                 str(getattr(args, 'audio_data', None)))
     return hashlib.sha1("|".join(bahan).encode()).hexdigest()[:8]
 
 
@@ -320,7 +321,7 @@ def infer_visual(split, model_path, imgsz=224, batch=64, data=None, prefix=None)
 # ===================================================================
 # INFERENSI AUDIO (CNN-MFCC)
 # ===================================================================
-def infer_audio(split, model_path, batch=32):
+def infer_audio(split, model_path, batch=32, data=None):
     """Kembalikan (probs [N,7] urut EMOTIONS, labels [N])."""
     import torch
 
@@ -329,8 +330,9 @@ def infer_audio(split, model_path, batch=32):
 
     model = load_audio_cnn(model_path, DEVICE)
 
-    sampel = kumpulkan_sampel(AUDIO_DIR, split, {'.wav'})
-    print(f"[audio] {len(sampel)} file dari {AUDIO_DIR / split}")
+    root = Path(data) if data else AUDIO_DIR
+    sampel = kumpulkan_sampel(root, split, {'.wav'})
+    print(f"[audio] {len(sampel)} file dari {root / split}")
 
     probs = np.zeros((len(sampel), len(EMOTIONS)), dtype=np.float32)
     labels = np.array([lbl for _, lbl in sampel], dtype=np.int64)
@@ -358,7 +360,8 @@ def ambil_probs(nama, split, args):
         probs, labels = infer_visual(split, args.visual_model, args.imgsz,
                                      data=args.data, prefix=args.prefix)
     else:
-        probs, labels = infer_audio(split, args.audio_model)
+        probs, labels = infer_audio(split, args.audio_model,
+                                    data=getattr(args, 'audio_data', None))
     simpan_cache(nama, split, kunci, probs, labels)
     return probs, labels
 
@@ -475,11 +478,17 @@ def mode_face(args):
 def mode_audio(args):
     probs, labels = ambil_probs('audio', args.split, args)
     cm = confusion_matrix(labels, probs.argmax(axis=1), len(EMOTIONS))
-    print_report(cm, EMOTIONS, f"AUDIO - CNN-MFCC, split '{args.split}' audio_emotion")
+    # --tag ikut dipakai di sini, sama seperti mode_face. Sebelumnya nama
+    # keluarannya dikunci 'audio_<split>', jadi mengevaluasi model audio kedua
+    # menimpa hasil model pertama tanpa peringatan apa pun.
+    sumber = Path(args.audio_data).name if args.audio_data else AUDIO_DIR.name
+    nama = f"audio_{args.tag}_{args.split}" if args.tag else f"audio_{args.split}"
+    print_report(cm, EMOTIONS,
+                 f"AUDIO - CNN-MFCC, split '{args.split}' {sumber}")
     print_confusion(cm, EMOTIONS)
-    simpan_csv(cm, EMOTIONS, f"audio_{args.split}")
+    simpan_csv(cm, EMOTIONS, nama)
     if args.plot:
-        plot_confusion(cm, EMOTIONS, f"audio_{args.split}")
+        plot_confusion(cm, EMOTIONS, nama)
     return cm
 
 
@@ -537,8 +546,15 @@ def main():
     p.add_argument('--audio_model', '--audio-model', dest='audio_model',
                    default=str(AUDIO_MODEL), help="Path bobot CNN audio.")
     p.add_argument('--data', default=None, metavar='DIR',
-                   help="Folder dataset visual, strukturnya <split>/<kelas>/. "
-                        "Default: webcam/datasets/fer2013.")
+                   help="Folder dataset VISUAL saja, strukturnya "
+                        "<split>/<kelas>/. Default: webcam/datasets/fer2013. "
+                        "Untuk audio pakai --audio_data.")
+    p.add_argument('--audio_data', '--audio-data', dest='audio_data',
+                   default=None, metavar='DIR',
+                   help="Folder dataset AUDIO, strukturnya <split>/<kelas>/. "
+                        "Default: audio/datasets/audio_emotion (pembagian per "
+                        "berkas). Pakai audio/datasets/audio_emotion_spk "
+                        "untuk angka speaker-independent.")
     p.add_argument('--prefix', default=None, metavar='AWALAN',
                    help="Hanya hitung berkas yang namanya diawali ini, mis. "
                         "'kdef_' untuk memisahkan sumber di dataset combined/.")
