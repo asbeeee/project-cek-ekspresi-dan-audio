@@ -527,9 +527,15 @@ def mode_fusion(args):
                  f"FUSION - alpha={args.alpha:.2f}, split '{args.split}'")
     print_confusion(cm, EMOTIONS)
     analisis_ambang(p_final, labels, args.tau, args.tau_conf)
-    simpan_csv(cm, EMOTIONS, f"fusion_a{args.alpha:.2f}_{args.split}")
+    # --tag ikut dipakai, sama seperti mode_face dan mode_audio. Tanpa itu nama
+    # berkasnya cuma memuat alpha, padahal model audio/visual yang dipakai juga
+    # menentukan isinya - dua konfigurasi berbeda dengan alpha sama akan saling
+    # menimpa tanpa peringatan.
+    nama_fusion = (f"fusion_{args.tag}_a{args.alpha:.2f}_{args.split}"
+                   if args.tag else f"fusion_a{args.alpha:.2f}_{args.split}")
+    simpan_csv(cm, EMOTIONS, nama_fusion)
     if args.plot:
-        plot_confusion(cm, EMOTIONS, f"fusion_a{args.alpha:.2f}_{args.split}")
+        plot_confusion(cm, EMOTIONS, nama_fusion)
     if args.sweep:
         sapu_alpha(p_visual, p_audio, labels)
     return cm

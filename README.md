@@ -29,7 +29,7 @@ Termasuk respons robot AiNex Hiwonder (lambaian tangan pada ekspresi *happy*).
 │   ├── results/               # confusion matrix, val runs
 │   └── datasets/              # fer2013, kdef, combined (tidak di git)
 ├── results/                   # metrics_*.csv dan confusion_*.csv
-├── Servers/                   # ainex_wave_server.py + requirements laptop
+├── Servers/                   # requirements laptop (wave server sudah dihapus)
 └── archive/                   # skrip lama (tidak di git, lihat README di dalamnya)
 ```
 
@@ -97,6 +97,21 @@ Hasilnya (gambar: `results/figur_audio_penutur.png`):
 | speaker-dependent | 0.6419 | 0.6632 |
 | speaker-independent | **0.4778** | **0.4387** |
 
+Sapuan alpha untuk fusion dengan model audio ini menaruh nilai terbaik di
+**0.60**, bergeser dari 0.50 - wajar, karena modalitas audionya lebih lemah
+jadi porsinya berkurang. Fusion tetap unggul dari kedua modalitas tunggalnya
+(0.7619 lawan visual-saja 0.6976 dan audio-saja 0.5039).
+
+`ALPHA` di kode tetap **0.50**, karena itu nilai yang benar untuk
+`best_audio_cnn.pt` yang dipakai `fusion_webcam.py`. Kalau pindah ke
+`best_audio_cnn_spk.pt`, ganti ALPHA jadi 0.60 berbarengan.
+
+Model mana yang dipakai di sistem akhir? Perbandingan yang adil tidak mungkin
+dibuat - menjalankan model speaker-dependent di test speaker-independent tidak
+sah, karena penutur di test itu ikut melatihnya. Saran: **pakai**
+`best_audio_cnn.pt` (dilatih dengan semua data) di sistem akhir, tapi
+**laporkan** 0.4778 / 0.4387 sebagai perkiraan jujur untuk penutur asing.
+
 Turun 16.4pp accuracy dan 22.5pp macro-F1. Yang paling jatuh adalah `surprise`,
 dari 0.8990 ke 0.3958 - 400 dari 652 berkasnya berasal dari TESS, jadi angka
 lamanya sebagian besar hafalan suara. Laporkan **kedua** angka berdampingan;
@@ -160,65 +175,36 @@ Cooldown lambaian default 60 detik, ubah dengan `--wave_cooldown DETIK`.
 Catatan: selama respons lambaian dimatikan, `--wave_url` dan `--wave_token`
 tetap diterima tapi tidak berpengaruh - tidak ada request yang dikirim.
 
-## Respons robot: sisi robot
+## Respons robot: DIHAPUS
 
-### Status: DIMATIKAN
+Pemicu lambaian tangan saat ekspresi *happy* sudah **dihapus** dari repo ini
+pada 18 September 2026 - bukan sekadar dimatikan seperti sebelumnya.
 
-Pemicu lambaian di `fusion_webcam.py` sedang dikomentari, jadi sistem tidak
-mengirim apa pun ke robot. Saat dijalankan, konsol mencetak:
+Alasannya lingkup, bukan teknis: bagian respons robot sedang dibicarakan dengan
+pemilik proyek pendamping yang juga punya responsnya sendiri, jadi keduanya
+tidak perlu saling menabrak.
 
-```
-[robot] Respons robot DIMATIKAN di kode (WAVE_ENABLED = False di bagian KONFIGURASI).
-```
+Yang ikut hilang:
 
-Untuk menghidupkannya lagi perlu **dua langkah** di `fusion_webcam.py`:
+- kelas `RobotController` dan konstanta `WAVE_ENABLED` di `fusion_webcam.py`
+- indikator `ROBOT:` di overlay
+- argumen `--wave_url`, `--wave_method`, `--wave_cooldown`, `--wave_timeout`,
+  `--wave_token`, `--no_wave`
+- `Servers/ainex_wave_server.py` (jembatan HTTP di sisi robot)
 
-1. ubah `WAVE_ENABLED = False` jadi `True` di bagian KONFIGURASI paling atas
-2. hapus tanda `#` pada blok `RESPONS ROBOT DIMATIKAN SEMENTARA` di dalam loop
-   utama (tiga baris yang memanggil `robot.trigger_wave()`)
+**Yang TIDAK hilang: dukungan kamera robot.** `--camera_url`, pembaca MJPEG,
+`--rotate` / `--flip`, dan diagnosa koneksi semuanya masih ada. Membaca gambar
+*dari* robot beda urusan dengan mengirim gerakan *ke* robot.
 
-Kalau cuma salah satu yang dikerjakan, lambaian tetap tidak jalan. Indikator
-`ROBOT:` di overlay juga ikut disembunyikan selama `WAVE_ENABLED` masih `False`,
-supaya tampilannya tidak menyesatkan.
-
-Sisa dokumentasi di bawah ini berlaku setelah lambaian dihidupkan kembali.
-
-`--wave_url` menunjuk ke server kecil yang harus jalan **di robot**. Server itu
-ada di `Servers/ainex_wave_server.py`. Salin ke Raspberry Pi robot, lalu:
+Semuanya masih tersimpan di riwayat git kalau nanti mau dipakai lagi:
 
 ```bash
-# image Pi 5 (ROS jalan di dalam Docker)
-docker exec -it -u ubuntu -w /home/ubuntu <container_id> /bin/bash
-python3 ainex_wave_server.py --action wave
-
-# image Pi 4 (ROS1 Noetic langsung di host)
-python3 ainex_wave_server.py --action wave
+git log --oneline -- Servers/ainex_wave_server.py
+git show <commit>:Servers/ainex_wave_server.py > Servers/ainex_wave_server.py
 ```
 
-`--action` adalah nama action group tanpa `.d6a`. Lihat daftarnya di
-`~/software/ainex_controller/ActionGroups/`, atau buat sendiri lewat
-ActionGroupEditor di PC software Hiwonder. Server memanggil
-`ainex_kinematics.motion_manager.MotionManager.run_action(<action>)`.
-
-### Soal "token"
-
-AiNex **tidak** butuh token untuk menggerakkan servo atau menjalankan action
-group. API key yang disebut di dokumentasi Hiwonder (`llm_api_key` /
-`vllm_api_key` di `/home/ubuntu/large_models/config.py`) hanya dipakai fitur
-*AI Large Model* - chat LLM, speech recognition, text-to-speech - dan tidak ada
-hubungannya dengan respons ekspresi di TA ini.
-
-Kalau endpoint `/wave` tetap mau dikunci, pakai shared secret buatan sendiri:
-
-```bash
-# di robot
-python3 ainex_wave_server.py --action wave --token RAHASIA123
-
-# di laptop
-python fusion_webcam.py --camera_url ... \
-                        --wave_url http://192.168.50.2:5000/wave \
-                        --wave_token RAHASIA123
-```
+Commit terakhir yang masih memuatnya bisa dicari dengan perintah pertama di
+atas.
 
 ## Dataset KDEF (opsional, untuk latih ulang model wajah)
 

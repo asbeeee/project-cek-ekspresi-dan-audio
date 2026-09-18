@@ -949,3 +949,109 @@ Menggantikan daftar di bagian 9, yang isinya sudah dikerjakan semua.
   menambah data dari sumber yang sama tidak akan menolong. Ini temuan untuk
   ditulis, bukan bug untuk dikejar.
 
+
+===============================================================================
+19. RESPONS ROBOT DIHAPUS, SAPUAN ALPHA SPEAKER-INDEPENDENT, FIGUR DIPERBAIKI
+    (18 September 2026)
+===============================================================================
+
+HAPUS  Respons robot (lambaian tangan saat 'happy') dihapus dari repo.
+      Sebelumnya cuma dimatikan lewat WAVE_ENABLED = False (bagian 10).
+      Sekarang benar-benar dihapus, atas permintaan: bagian respons robot
+      sedang dibicarakan dengan pemilik proyek pendamping yang juga punya
+      responsnya sendiri, jadi keduanya tidak perlu saling menabrak.
+
+      Yang dihapus dari fusion_webcam.py:
+        - kelas RobotController beserta blok penjelasannya
+        - konstanta WAVE_ENABLED
+        - indikator 'ROBOT:' di overlay dan parameter robot= di draw_overlay()
+        - grup argumen --wave_url / --wave_method / --wave_cooldown /
+          --wave_timeout / --wave_token / --no_wave
+        - blok pemicu trigger_wave() yang dikomentari di loop utama
+      Berkas yang dihapus:
+        - Servers/ainex_wave_server.py
+
+      YANG TIDAK DIHAPUS: dukungan KAMERA robot. --camera_url, pembaca MJPEG
+      di thread terpisah, --rotate / --flip / --width, dan diagnosa koneksi
+      semuanya masih ada. Membaca gambar DARI robot beda urusan dengan
+      mengirim gerakan KE robot, dan cuma yang kedua yang berpotensi bentrok.
+
+      Semuanya masih ada di riwayat git:
+        git log --oneline -- Servers/ainex_wave_server.py
+        git show <commit>:Servers/ainex_wave_server.py > Servers/ainex_wave_server.py
+
+PERBAIKAN  results_figures.py tidak bisa dijalankan sama sekali.
+      'python results_figures.py --jpg' berhenti dengan "tidak ada file yang
+      cocok di webcam/datasets/combined/test". Ini kemunduran yang dibuat
+      sendiri di bagian 13: waktu merge_datasets.py digeneralisasi, prefix nama
+      berkas berubah dari 'fer_'/'kdef_' jadi nama sumbernya -
+      'fer2013plus_', 'expw_', 'kdef_'. Prefix 'fer_' tidak ada lagi, tapi
+      results_figures.py masih mencarinya.
+
+      Prefiksnya sekarang jadi konstanta di satu tempat (PREFIX_A/PREFIX_B),
+      bukan ditulis berulang di empat baris.
+
+      Sekalian dibetulkan: gambar_wajah() membandingkan model baseline FER2013
+      lawan merged_baseline, dua-duanya model lama. Sekarang membandingkan
+      merged_baseline (lama) lawan gabungan_ferplus_expw (baru), di test FER+
+      dan KDEF.
+
+      Dan satu klaim yang sudah tidak benar: judul panel B dulu menulis "tidak
+      ada beda yang signifikan" langsung sebagai teks. Itu benar untuk
+      perbandingan yang dulu, tapi salah begitu modelnya diganti - dan tidak
+      ada yang mengingatkan. Sekarang p-value-nya dihitung dan dicetak apa
+      adanya lewat tanda_p().
+
+BARU  Sapuan alpha dengan model audio SPEAKER-INDEPENDENT.
+
+        alpha   accuracy   macro-F1
+         0.00     0.5039     0.4410   <- audio saja
+         0.50     0.7567     0.7044
+         0.60     0.7619     0.7087   <- tertinggi di dua-duanya
+         0.70     0.7482     0.6923
+         1.00     0.6976     0.6293   <- visual saja
+
+      Alpha terbaiknya bergeser dari 0.50 ke 0.60, yaitu ke arah visual.
+      Masuk akal: modalitas audionya sekarang memang lebih lemah, jadi
+      porsinya berkurang. (Dugaan yang sama pernah salah di bagian 15 waktu
+      model wajah yang membaik - jadi tetap disapu, bukan ditebak.)
+
+      Fusion tetap unggul dari kedua modalitas tunggalnya walau audionya
+      lebih lemah: 0.7619 lawan visual-saja 0.6976 dan audio-saja 0.5039.
+
+      ALPHA di kode TIDAK diubah, tetap 0.50. Itu nilai yang benar untuk model
+      audio yang sekarang dipakai fusion_webcam.py (best_audio_cnn.pt, dilatih
+      dengan pembagian per berkas). Kalau nanti pindah ke
+      best_audio_cnn_spk.pt, ganti ALPHA jadi 0.60 berbarengan.
+
+CATATAN  Model audio mana yang sebaiknya dipakai di sistem akhir?
+      Perbandingan yang adil TIDAK MUNGKIN dibuat: menjalankan model
+      speaker-dependent di test speaker-independent tidak sah, karena penutur
+      di test itu ikut melatihnya. Jadi cuma ada satu angka yang sah untuk
+      penutur asing, yaitu 0.4778 milik model speaker-independent.
+
+      Praktik yang lazim dan yang disarankan di sini: PAKAI model yang dilatih
+      dengan semua data (best_audio_cnn.pt) di sistem akhir, tapi LAPORKAN
+      0.4778 / 0.4387 sebagai perkiraan jujur untuk penutur asing. Model akhir
+      dilatih dengan data terbanyak; angka yang dilaporkan datang dari
+      pengujian yang benar-benar menahan sebagian data.
+
+PERBAIKAN  mode_fusion() juga mengabaikan --tag - cacat yang sama dengan
+      mode_audio() di bagian 16. Nama keluarannya cuma memuat alpha
+      ("fusion_a0.50_test"), padahal model audio dan visual yang dipakai juga
+      menentukan isinya. Akibatnya hasil fusion dengan model audio
+      speaker-independent menimpa hasil konfigurasi biasa tanpa peringatan,
+      di bawah nama yang tidak menyebut-nyebut perbedaannya.
+
+      Sekarang --tag ikut dipakai. Berkas yang terlanjur ambigu diganti nama,
+      dan hasil untuk konfigurasi yang benar-benar dipakai kode dibuat ulang:
+
+        results/metrics_fusion_dep_a0.50_test.csv   <- best_audio_cnn.pt
+                                                       (yang dipakai sekarang)
+                                                       acc 0.8384, macro-F1 0.7961
+        results/metrics_fusion_spk_a0.50_test.csv   <- best_audio_cnn_spk.pt
+                                                       acc 0.7567, macro-F1 0.7044
+
+      results/*fusion_a0.60* yang lama dibiarkan sebagai catatan konfigurasi
+      sebelum ALPHA diubah; jangan dipakai mewakili sistem sekarang.
+

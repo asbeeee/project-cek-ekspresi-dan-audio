@@ -61,8 +61,19 @@ from results_calculation import (
     pasangkan, evaluasi_fusion, VISUAL_MODEL, AUDIO_MODEL,
 )
 
-MERGED_DEFAULT = PROJECT_ROOT / "webcam" / "models" / "merged_baseline" / "weights" / "best.pt"
+LAMA_DEFAULT = PROJECT_ROOT / "webcam" / "models" / "merged_baseline" / "weights" / "best.pt"
+BARU_DEFAULT = PROJECT_ROOT / "webcam" / "models" / "gabungan_ferplus_expw" / "weights" / "best.pt"
 COMBINED_DIR = PROJECT_ROOT / "webcam" / "datasets" / "combined"
+
+# Prefix nama berkas di combined/, dipasang merge_datasets.py dari nama
+# sumbernya. Dulu 'fer_' dan 'kdef_'; sejak merge_datasets.py bisa menerima
+# sumber apa pun, prefiksnya jadi nama sumber itu sendiri - 'fer_' tidak ada
+# lagi dan skrip ini berhenti dengan "tidak ada file yang cocok".
+PREFIX_A, NAMA_A = 'fer2013plus_', 'FER+'
+PREFIX_B, NAMA_B = 'kdef_', 'KDEF'
+
+NAMA_MODEL_LAMA = 'model lama (FER2013 + KDEF)'
+NAMA_MODEL_BARU = 'model baru (FER+ + ExpW + KDEF)'
 
 # ===================================================================
 # PALET (dari references/palette.md skill dataviz, sudah divalidasi)
@@ -135,10 +146,10 @@ def kumpulkan(args):
     """Hitung semua yang dibutuhkan kedua gambar."""
     d = {}
     kombinasi = [
-        ('base_fer', args.base_model, COMBINED_DIR, 'fer_'),
-        ('base_kdef', args.base_model, COMBINED_DIR, 'kdef_'),
-        ('merged_fer', args.merged_model, COMBINED_DIR, 'fer_'),
-        ('merged_kdef', args.merged_model, COMBINED_DIR, 'kdef_'),
+        ('base_fer', args.base_model, COMBINED_DIR, PREFIX_A),
+        ('base_kdef', args.base_model, COMBINED_DIR, PREFIX_B),
+        ('merged_fer', args.merged_model, COMBINED_DIR, PREFIX_A),
+        ('merged_kdef', args.merged_model, COMBINED_DIR, PREFIX_B),
     ]
     for nama, model, data, prefix in kombinasi:
         print(f"[ambil] {nama}")
@@ -208,6 +219,18 @@ def dumbbell(ax, label, sebelum, sesudah, judul, catatan=None,
     rapikan(ax)
 
 
+def tanda_p(p):
+    """Tulis p-value apa adanya, jangan dipatok di teks judul.
+
+    Versi sebelumnya menulis "tidak ada beda yang signifikan" langsung di
+    judul panel. Itu benar untuk perbandingan yang dulu, tapi salah begitu
+    modelnya diganti - dan tidak ada yang mengingatkan.
+    """
+    if p < 0.001:
+        return "p<0.001"
+    return f"p={p:.3f}" + ("" if p < 0.05 else " n.s.")
+
+
 def gambar_wajah(d, path):
     fig = plt.figure(figsize=(13.5, 7.6))
     gs = fig.add_gridspec(2, 2, width_ratios=[1.2, 1], height_ratios=[1, 1.2],
@@ -232,12 +255,13 @@ def gambar_wajah(d, path):
     # Panel A: ringkasan dua test set
     ax = fig.add_subplot(gs[0, 0])
     dumbbell(ax,
-             ['FER2013  accuracy', 'FER2013  macro-F1',
-              'KDEF  accuracy', 'KDEF  macro-F1'],
+             [f'{NAMA_A}  accuracy', f'{NAMA_A}  macro-F1',
+              f'{NAMA_B}  accuracy', f'{NAMA_B}  macro-F1'],
              [m_bf['accuracy'], m_bf['macro'][2], m_bk['accuracy'], m_bk['macro'][2]],
              [m_mf['accuracy'], m_mf['macro'][2], m_mk['accuracy'], m_mk['macro'][2]],
-             'A. Baseline vs gabungan, diukur terpisah per sumber',
-             catatan=[f"p={p_fer:.2f} n.s.", "", "p<0.001", ""])
+             'A. Model lama vs baru, diukur terpisah per sumber',
+             catatan=[tanda_p(p_fer), "", tanda_p(p_kdef), ""],
+             nama_sebelum=NAMA_MODEL_LAMA, nama_sesudah=NAMA_MODEL_BARU)
     # Legenda ditaruh di bawah sumbu, di luar area data, supaya tidak menutupi
     # baris paling bawah.
     ax.legend(frameon=False, fontsize=8, loc='upper left',
@@ -248,20 +272,22 @@ def gambar_wajah(d, path):
     ax = fig.add_subplot(gs[1, 0])
     dumbbell(ax, [EMOTIONS_ID[e] for e in EMOTIONS],
              m_bf['f1'], m_mf['f1'],
-             'B. F1 per kelas di test FER2013 (tidak ada beda yang signifikan)')
+             f'B. F1 per kelas di test {NAMA_A} ({tanda_p(p_fer)})',
+             nama_sebelum=NAMA_MODEL_LAMA, nama_sesudah=NAMA_MODEL_BARU)
 
     # Panel C & D: confusion matrix
     for kolom, (cm, judul) in enumerate([
-            (cm_mf, 'C. Gabungan @ test FER2013'),
-            (cm_mk, 'D. Gabungan @ test KDEF')]):
+            (cm_mf, f'C. Model baru @ test {NAMA_A}'),
+            (cm_mk, f'D. Model baru @ test {NAMA_B}')]):
         ax = fig.add_subplot(gs[kolom, 1])
         heatmap(ax, cm, judul)
 
-    fig.suptitle('Evaluasi model wajah: pengaruh penggabungan KDEF ke FER2013',
+    fig.suptitle('Evaluasi model wajah: model lama vs model baru',
                  fontsize=13.5, color=INK, x=0.045, ha='left', y=0.975)
     fig.text(0.045, 0.935,
-             'Test set diukur terpisah per sumber. Test KDEF berisi 12 orang yang tidak '
-             'ikut dilatih.',
+             f'Test set diukur terpisah per sumber ({NAMA_A} dan {NAMA_B}), '
+             f'pada data yang sama untuk kedua model. Test {NAMA_B} berisi 12 '
+             f'orang yang tidak ikut dilatih.',
              fontsize=8.5, color=MUTED, ha='left')
     fig.text(0.045, 0.908,
              'Signifikansi memakai uji McNemar pada sampel berpasangan. Dua titik yang '
@@ -618,10 +644,10 @@ def main():
     p.add_argument('--split', default='test')
     p.add_argument('--alpha', type=float, default=0.6)
     p.add_argument('--seed', type=int, default=42)
-    p.add_argument('--base_model', default=str(VISUAL_MODEL),
-                   help="Bobot model baseline (FER2013 saja).")
-    p.add_argument('--merged_model', default=str(MERGED_DEFAULT),
-                   help="Bobot model gabungan (FER2013 + KDEF).")
+    p.add_argument('--base_model', default=str(LAMA_DEFAULT),
+                   help="Bobot model PEMBANDING (yang lama).")
+    p.add_argument('--merged_model', default=str(BARU_DEFAULT),
+                   help="Bobot model yang dinilai (yang baru).")
     p.add_argument('--jpg', action='store_true',
                    help="Simpan .jpg selain .png (PNG lebih tajam untuk teks).")
     p.add_argument('--penutur', action='store_true',

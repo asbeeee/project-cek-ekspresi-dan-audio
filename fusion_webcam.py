@@ -50,6 +50,26 @@ jadi gabungan seperti "Sedih-Netral" tidak punya arti - yang dimaksud sebenarnya
 dari dua kelas teratas adalah netral, keputusannya dipaksa jadi TUNGGAL memakai
 kelas teratas, walaupun selisihnya lebih kecil dari tau.
 
+RESPONS ROBOT SUDAH DIHAPUS (18 September 2026)
+-----------------------------------------------
+Pemicu lambaian tangan saat ekspresi 'happy' dulu ada di berkas ini, tapi
+sudah dihapus - bukan sekadar dimatikan. Alasannya lingkup, bukan teknis:
+bagian respons robot sedang dibicarakan dengan pemilik proyek pendamping yang
+juga punya responsnya sendiri, jadi keduanya tidak perlu saling menabrak.
+
+Yang ikut hilang: kelas RobotController, konstanta WAVE_ENABLED, indikator
+'ROBOT:' di overlay, argumen --wave_url / --wave_method / --wave_cooldown /
+--wave_timeout / --wave_token / --no_wave, dan Servers/ainex_wave_server.py.
+
+Yang TIDAK hilang: dukungan KAMERA robot. --camera_url, pembaca MJPEG,
+--rotate / --flip, dan diagnosa koneksi semuanya masih ada. Membaca gambar
+DARI robot beda urusan dengan mengirim gerakan KE robot.
+
+Kalau mau dihidupkan lagi, ambil dari riwayat git:
+    git log --oneline -- Servers/ainex_wave_server.py
+    git show <commit>:fusion_webcam.py
+    git show <commit>:Servers/ainex_wave_server.py
+
 PERUBAHAN v3
 ------------
 - Tambah --camera_url : membaca MJPEG / ROS web_video_server dari robot AiNex.
@@ -141,14 +161,6 @@ GRAYSCALE_INPUT = True
 # di docstring paling atas.
 NO_COMPOUND = ('neutral',)
 
-# Respons robot (lambaian tangan saat 'happy') DIMATIKAN.
-# Untuk menghidupkannya kembali ada DUA langkah:
-#   1. ubah baris ini jadi True
-#   2. hapus tanda '#' pada blok "RESPONS ROBOT DIMATIKAN SEMENTARA"
-#      di dalam loop utama (cari kata WAVE_ENABLED)
-# Kalau cuma salah satu, lambaian tetap tidak jalan.
-WAVE_ENABLED = False
-
 AUDIO_INFER_INTERVAL = 1.0
 
 # 'auto' -> GPU kalau ada. Dulu terkunci 'cpu' padahal mesin ini punya
@@ -219,90 +231,6 @@ class AudioWorker:
         if self.stream is not None:
             self.stream.stop()
             self.stream.close()
-
-
-# ===================================================================
-# ROBOT CONTROLLER (AiNex Hiwonder - respons ekspresi)
-# ===================================================================
-# Kirim perintah gerak (mis. lambaian tangan) ke robot ketika ekspresi
-# tertentu terdeteksi. Cooldown mencegah pengulangan terus-menerus.
-#
-# Cara integrasi dengan robot AiNex Hiwonder:
-#   Robot AiNex biasanya menjalankan ROS + rosbridge / server HTTP kecil
-#   yang memicu action group (misal action group "wave" yang sudah
-#   didesain lewat ActionGroupEditor). Cara paling portabel dari sisi
-#   PC ini adalah HTTP request ke endpoint yang di sisi robot memanggil
-#   action group tersebut.
-#
-#   Server kecil itu sudah disediakan di repo: Servers/ainex_wave_server.py.
-#   Salin ke robot, jalankan di sana (di dalam kontainer Docker untuk image
-#   Pi 5), lalu di sisi PC ini panggil:
-#       python fusion_webcam.py --camera_url ... \
-#              --wave_url http://192.168.50.2:5000/wave
-#
-#   Catatan soal "token": AiNex tidak butuh token untuk menggerakkan servo.
-#   API key di dokumentasi Hiwonder (llm_api_key / vllm_api_key di
-#   /home/ubuntu/large_models/config.py) hanya untuk fitur AI Large Model
-#   (chat LLM + text-to-speech), bukan untuk action group. Kalau endpoint
-#   /wave mau dikunci, pakai shared secret sendiri: --token di sisi robot,
-#   --wave_token di sisi PC.
-#
-# Kalau --wave_url tidak diisi, sistem tetap jalan tapi hanya mencetak
-# "[ROBOT] WAVE!" ke konsol (mode dry-run, berguna untuk pengujian).
-class RobotController:
-    def __init__(self, wave_url=None, method='POST', cooldown=60.0,
-                 timeout=2.0, enabled=True, token=None):
-        self.wave_url = wave_url
-        self.method = method.upper()
-        self.token = token
-        self.cooldown = float(cooldown)
-        self.timeout = float(timeout)
-        self.enabled = enabled
-        self.last_wave_ts = 0.0  # 0 = belum pernah, boleh langsung wave
-        self.last_status = ""    # untuk overlay
-        self._lock = threading.Lock()
-
-    def cooldown_remaining(self, now=None):
-        if self.last_wave_ts == 0.0:
-            return 0.0
-        now = now if now is not None else time.time()
-        return max(0.0, self.cooldown - (now - self.last_wave_ts))
-
-    def can_wave(self, now=None):
-        return self.enabled and self.cooldown_remaining(now) <= 0.0
-
-    def trigger_wave(self):
-        """Panggil dari main loop. Non-blocking: HTTP dieksekusi di thread."""
-        if not self.can_wave():
-            return False
-        with self._lock:
-            if not self.can_wave():
-                return False
-            self.last_wave_ts = time.time()
-        threading.Thread(target=self._do_wave, daemon=True).start()
-        return True
-
-    def _do_wave(self):
-        if self.wave_url is None:
-            print("[ROBOT] WAVE! (dry-run: --wave_url belum diset)")
-            self.last_status = "dry-run"
-            return
-        try:
-            req = Request(self.wave_url, method=self.method)
-            # body kosong; kalau perlu payload, tambahkan di sini
-            if self.method in ('POST', 'PUT'):
-                req.data = b''
-                req.add_header('Content-Type', 'application/json')
-            if self.token:
-                req.add_header('Authorization', 'Bearer %s' % self.token)
-            with urlopen(req, timeout=self.timeout) as resp:
-                print("[ROBOT] WAVE terkirim (%s %s -> HTTP %d)" %
-                      (self.method, self.wave_url, resp.status))
-                self.last_status = "ok"
-        except Exception as e:
-            print("[ROBOT] WAVE gagal: %s" % e)
-            self.last_status = "gagal: %s" % type(e).__name__
-
 
 
 class DummyAudio:
@@ -636,7 +564,7 @@ TYPE_COLOR = {
 
 def draw_overlay(frame, p_visual, p_audio, p_final, result, alpha, tau,
                  fps, audio_level, face_box, speech_on=True, source_label="",
-                 robot=None):
+                 ):
     h, w = frame.shape[:2]
     color = TYPE_COLOR.get(result['type'], (255, 255, 255))
 
@@ -692,21 +620,6 @@ def draw_overlay(frame, p_visual, p_audio, p_final, result, alpha, tau,
     keys = "q=keluar  t/g=tau" if not speech_on else "q=keluar  a/z=alpha  t/g=tau"
     cv2.putText(frame, keys, (12, yb + 72),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.45, (150, 150, 150), 1)
-
-    # Status robot (kanan atas, tidak menutup panel kiri)
-    if robot is not None and robot.enabled:
-        remaining = robot.cooldown_remaining()
-        if remaining <= 0.0:
-            rbt_txt = "ROBOT: siap lambai"
-            rbt_color = (0, 220, 0)
-        else:
-            rbt_txt = "ROBOT: cooldown %.0fs" % remaining
-            rbt_color = (0, 165, 255)
-        (tw, th_) = cv2.getTextSize(rbt_txt, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)[0]
-        cv2.rectangle(frame, (w - tw - 20, 12), (w - 8, 12 + th_ + 12),
-                      (25, 25, 25), -1)
-        cv2.putText(frame, rbt_txt, (w - tw - 14, 12 + th_ + 4),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, rbt_color, 2)
 
     return frame
 
@@ -783,29 +696,6 @@ def parse_args(argv=None):
                             "(default: auto).")
     g_mdl.add_argument('--imgsz', type=int, default=224, help="Ukuran input YOLO (default: 224).")
 
-    g_rbt = p.add_argument_group("Respons robot (AiNex Hiwonder)")
-    g_rbt.add_argument('--wave_url', '--wave-url', dest='wave_url', default=None,
-                       metavar='URL',
-                       help="Endpoint HTTP di robot yang memicu action group 'wave'. "
-                            "Kalau kosong, sistem hanya mencetak '[ROBOT] WAVE!' (dry-run).")
-    g_rbt.add_argument('--wave_method', '--wave-method', dest='wave_method',
-                       choices=['GET', 'POST'], default='POST',
-                       help="Metode HTTP untuk --wave_url (default: POST).")
-    g_rbt.add_argument('--wave_cooldown', '--wave-cooldown', dest='wave_cooldown',
-                       type=float, default=60.0, metavar='DETIK',
-                       help="Jeda minimal antar-lambaian (default: 60 detik).")
-    g_rbt.add_argument('--wave_timeout', '--wave-timeout', dest='wave_timeout',
-                       type=float, default=2.0, metavar='DETIK',
-                       help="Timeout request HTTP wave (default: 2 detik).")
-    g_rbt.add_argument('--wave_token', '--wave-token', dest='wave_token',
-                       default=None, metavar='TOKEN',
-                       help="Shared secret yang dikirim sebagai header "
-                            "'Authorization: Bearer TOKEN'. Isi kalau server di "
-                            "robot (Servers/ainex_wave_server.py) dijalankan "
-                            "dengan --token.")
-    g_rbt.add_argument('--no_wave', '--no-wave', dest='no_wave', action='store_true',
-                       help="Matikan respons robot sepenuhnya.")
-
     args = p.parse_args(argv)
 
     # Kamera robot tidak dicermin; webcam laptop dicermin, sama seperti versi lama.
@@ -859,26 +749,6 @@ def main(argv=None):
     cap = open_camera(args)
     if cap is None:
         return 1
-
-    robot = RobotController(
-        wave_url=args.wave_url,
-        method=args.wave_method,
-        cooldown=args.wave_cooldown,
-        timeout=args.wave_timeout,
-        enabled=not args.no_wave and WAVE_ENABLED,
-        token=args.wave_token,
-    )
-    if not WAVE_ENABLED:
-        print("[robot] Respons robot DIMATIKAN di kode "
-              "(WAVE_ENABLED = False di bagian KONFIGURASI).")
-    elif args.no_wave:
-        print("[robot] Respons robot DIMATIKAN (--no_wave).")
-    elif args.wave_url is None:
-        print("[robot] Mode dry-run: setiap 'happy' hanya cetak '[ROBOT] WAVE!' "
-              "(cooldown %.0fs). Isi --wave_url untuk kirim ke robot." % args.wave_cooldown)
-    else:
-        print("[robot] Wave -> %s %s (cooldown %.0fs)." %
-              (args.wave_method, args.wave_url, args.wave_cooldown))
 
     try:
         worker.start()
@@ -968,24 +838,10 @@ def main(argv=None):
             fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev_t, 1e-6))
             prev_t = now
 
-            # ----------------------------------------------------------------
-            # RESPONS ROBOT DIMATIKAN SEMENTARA
-            # ----------------------------------------------------------------
-            # Untuk menghidupkan lagi: hapus tanda '#' pada tiga baris di bawah,
-            # DAN ubah WAVE_ENABLED jadi True di bagian KONFIGURASI paling atas.
-            #
-            # Perilakunya: lambai kalau ekspresi TUNGGAL & top-1 = happy.
-            # Kondisi TUNGGAL memastikan tidak memicu pada ekspresi majemuk
-            # (misal happy-surprise) atau saat model tidak yakin.
-            #
-            # if (result['type'] == 'TUNGGAL'
-            #         and EMOTIONS[result['c1']] == 'happy'):
-            #     robot.trigger_wave()
-
             frame = draw_overlay(frame, p_visual, p_audio, p_final,
                                  result, ALPHA, TAU, fps, worker.audio_level, face_box,
-                                 speech_on=not args.no_speech, source_label=source_label,
-                                 robot=robot)
+                                 speech_on=not args.no_speech,
+                                 source_label=source_label)
             cv2.imshow('Multimodal Emotion Fusion (Realtime)', frame)
 
             if not handle_key(cv2.waitKey(1) & 0xFF):
