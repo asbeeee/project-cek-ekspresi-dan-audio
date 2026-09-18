@@ -698,3 +698,99 @@ MASIH BISA DIBERESKAN SENDIRI
         sesi ini dan sengaja tidak diubah diam-diam - samakan dulu kalau mau
         membandingkan hasil dua jalur itu.
 
+
+===============================================================================
+15. ALPHA DISETEL DARI HASIL SAPUAN + SPLIT SPEAKER-INDEPENDENT
+    (18 September 2026)
+===============================================================================
+
+PERBAIKAN  fusion_webcam.py dan results_calculation.py menunjuk model wajah
+           yang SALAH.
+      Keduanya masih memuat webcam/models/fer2013_baseline-2/weights/best.pt,
+      yaitu run paling awal - akurasinya 0.4741 di test gabungan sekarang,
+      sementara model hasil sesi ini 0.6976. Jadi demo langsungnya memakai
+      model audio baru yang dipasangkan ke model wajah dua generasi lebih tua.
+
+      Gampang terlewat karena path-nya memang berakhiran "best.pt" - tiap run
+      ultralytics punya best.pt sendiri, jadi yang menentukan model mana adalah
+      nama FOLDER-nya. Komentar penjelas ditaruh di kedua berkas supaya tidak
+      terulang.
+
+UBAH  ALPHA 0.6 -> 0.50 di fusion_webcam.py dan results_calculation.py.
+      Sapuan ulang dengan kedua model yang sekarang, di test gabungan 9381
+      sampel:
+
+        alpha   accuracy   macro-F1
+         0.00     0.6700     0.6286   <- audio saja
+         0.40     0.8297     0.7898
+         0.50     0.8384     0.7961   <- tertinggi di dua-duanya
+         0.60     0.8140     0.7689   <- nilai lama
+         1.00     0.6976     0.6293   <- visual saja
+
+      Untung +2.4pp accuracy dan +2.7pp macro-F1 cuma dari mengganti satu
+      angka. Temuan ini sebenarnya sudah dicatat di bagian 9 dan tidak pernah
+      ditindaklanjuti.
+
+      Dugaan awal saat merencanakan ini keliru: diperkirakan alpha optimalnya
+      NAIK karena model wajah membaik jauh lebih banyak daripada model audio.
+      Ternyata tetap di 0.50. Dicatat di sini supaya alasannya tidak dikutip
+      salah - yang benar adalah hasil sapuannya, bukan penalarannya.
+
+      Tabel di atas juga jadi pembenaran empiris pendekatan multimodal ini:
+      fusion unggul ~14pp dari modalitas tunggal terbaiknya di data yang sama.
+      Layak masuk laporan.
+
+UBAH  audio/scripts/split_audio.py - tambah --by_penutur
+      Membagi per PENUTUR, bukan per berkas. Semua berkas milik satu orang
+      masuk split yang sama, jadi penutur di test benar-benar belum pernah
+      terdengar saat latih.
+
+      Alasannya bukan kerapian metodologi semata: robot AiNex hampir selalu
+      bicara dengan orang asing, jadi angka speaker-independent itulah yang
+      menggambarkan keadaan pemakaian sebenarnya.
+
+      Penutur diacak PER DATASET, bukan dalam satu kolam. Kalau satu kolam,
+      CREMA-D yang punya 91 dari 121 penutur bisa memborong seluruh val dan
+      test, dan sumber lain tidak terwakili sama sekali.
+
+        dataset   penutur   train   val   test
+        crema          91      63    14     14
+        ravdess        24      16     4      4
+        savee           4       2     1      1
+        tess            2       2     0      0   <- train saja
+
+        berkas: 9147 train, 1508 val, 1507 test
+        irisan penutur antar split sudah dicek = 0
+
+      TESS masuk train saja lewat --min_penutur (bawaan 3): dengan 2 penutur,
+      menaruh salah satunya di test berarti test-nya diwakili satu suara.
+      Konsekuensinya kelas surprise di test menyusut dari 289 jadi 47 berkas,
+      karena 400 dari 652 berkas surprise berasal dari TESS. Skripnya mencetak
+      peringatan ini sendiri, dan support 47 itu harus ikut disebut tiap kali
+      F1 surprise dikutip.
+
+      Hasilnya ditulis ke folder TERPISAH (audio/datasets/audio_emotion_spk/),
+      bukan menimpa yang lama, supaya dua-duanya ada di disk dan dua angka bisa
+      dilaporkan berdampingan.
+
+      Mode lama tetap bawaan dan sudah diuji regresi: pembagian per berkas
+      dengan seed 42 masih menghasilkan isi split yang SAMA PERSIS dengan
+      folder audio_emotion/ yang ada, jadi model yang sekarang tidak kehilangan
+      test set-nya.
+
+TEMUAN  Satu berkas TESS salah nama di rilis aslinya: OA_bite_neutral.wav,
+      kurang huruf F, seharusnya OAF_bite_neutral.wav. Kalau dibiarkan, 'OA'
+      terbaca sebagai penutur ketiga yang cuma punya satu berkas, dan penutur
+      satu-berkas itu bisa mendarat di test sendirian. Ditangani lewat tabel
+      ERRATA_PENUTUR, pola yang sama dengan ERRATA berkas KDEF di kdefTrain.py.
+
+BELUM  Model speaker-independent-nya BELUM dilatih. Perintahnya:
+
+        python audio/scripts/train_audio_cnn.py --yes \
+            --data audio/datasets/audio_emotion_spk \
+            --out audio/models/best_audio_cnn_spk.pt --workers 4
+
+      Angkanya akan lebih rendah dari 0.6419 yang sekarang. Itu memang
+      seharusnya - yang sekarang terlalu tinggi karena penutur yang sama ada di
+      train dan test.
+

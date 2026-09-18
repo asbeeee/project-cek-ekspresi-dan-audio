@@ -43,7 +43,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 
 FER_DIR = PROJECT_ROOT / "webcam" / "datasets" / "fer2013"
 AUDIO_DIR = PROJECT_ROOT / "audio" / "datasets" / "audio_emotion"
-VISUAL_MODEL = PROJECT_ROOT / "webcam" / "models" / "fer2013_baseline-2" / "weights" / "best.pt"
+# Nama FOLDER-nya yang menentukan model mana, bukan "best.pt"-nya - tiap run
+# ultralytics punya best.pt sendiri. Harus sama dengan fusion_webcam.py.
+VISUAL_MODEL = PROJECT_ROOT / "webcam" / "models" / "gabungan_ferplus_expw" / "weights" / "best.pt"
 AUDIO_MODEL = PROJECT_ROOT / "audio" / "models" / "best_audio_cnn.pt"
 OUT_DIR = PROJECT_ROOT / "results"
 CACHE_DIR = OUT_DIR / "cache"
@@ -51,7 +53,9 @@ CACHE_DIR = OUT_DIR / "cache"
 IMG_EXT = {'.jpg', '.jpeg', '.png', '.bmp'}
 
 # Parameter fusion, default sama dengan fusion_webcam.py.
-ALPHA = 0.6
+# ALPHA 0.50 dari hasil --sweep 18 September 2026; penjelasan lengkap dan
+# tabelnya ada di fusion_webcam.py di bagian KONFIGURASI.
+ALPHA = 0.50
 TAU = 0.20
 TAU_CONF = 0.40
 

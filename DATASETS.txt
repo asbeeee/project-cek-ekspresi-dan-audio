@@ -472,10 +472,56 @@ aktor, CREMA-D 91 aktor), tapi SAVEE dan TESS memperparahnya:
 TESS lebih parah lagi karena kedua penuturnya mengucapkan 200 kata yang SAMA
 untuk tiap emosi. Jadi untuk satu berkas TESS di test, hampir pasti ada berkas
 train dengan penutur sama, kata sama, dan emosi sama - bedanya cuma take-nya.
-Kalau nanti dituntut angka speaker-independent, pembagiannya harus diubah jadi
-per penutur (misal TESS: OAF ke train, YAF ke test), dan angkanya akan turun.
-Untuk sekarang metodenya dibiarkan sama supaya bisa dibandingkan dengan hasil
-baseline sebelumnya, tapi batasan ini harus disebut di laporan.
+SUDAH DITANGANI 18 September 2026. split_audio.py sekarang punya --by_penutur
+yang membagi per PENUTUR, bukan per berkas, dan hasilnya ditaruh di folder
+terpisah supaya dua-duanya ada:
+
+    audio/datasets/audio_emotion/       per berkas  (speaker-dependent)
+    audio/datasets/audio_emotion_spk/   per penutur (speaker-independent)
+
+    python audio/scripts/split_audio.py --by_penutur \
+        --dst audio/datasets/audio_emotion_spk
+
+Pembagian penuturnya, diacak per dataset supaya tiap split kebagian dari semua
+sumber (kalau penutur diacak jadi satu kolam, CREMA-D yang punya 91 penutur
+bisa memborong seluruh val dan test):
+
+    dataset   penutur   train   val   test
+    -------   -------   -----   ---   ----
+    crema          91      63    14     14
+    ravdess        24      16     4      4
+    savee           4       2     1      1
+    tess            2       2     0      0   <- train saja
+
+    Sudah diverifikasi: irisan penutur train-val, train-test, dan val-test
+    semuanya = 0.
+
+    Berkas: 9147 train, 1508 val, 1507 test.
+
+TESS MASUK TRAIN SAJA. Dengan cuma 2 penutur, menaruh salah satunya di test
+berarti seluruh test TESS diwakili satu suara - itu tidak mengukur apa pun.
+Konsekuensinya kelas surprise di test menyusut drastis, dari 289 jadi 47
+berkas, karena 400 dari 652 berkas surprise memang berasal dari TESS. Angka
+surprise di split speaker-independent karena itu jauh kurang stabil; sebutkan
+support-nya (47) tiap kali mengutip F1 kelas itu.
+
+Satu cacat nama berkas ditemukan saat ini dikerjakan: di TESS ada
+OA_bite_neutral.wav yang seharusnya OAF_bite_neutral.wav - kurang huruf F.
+Kalau dibiarkan, 'OA' terbaca sebagai penutur ketiga yang cuma punya satu
+berkas. Ditangani lewat tabel ERRATA_PENUTUR di split_audio.py, pola yang sama
+dengan ERRATA berkas KDEF di kdefTrain.py.
+
+CARA MELAPORKANNYA. Sajikan DUA angka berdampingan, jangan pilih salah satu:
+
+    pembagian              menjawab pertanyaan
+    --------------------   ---------------------------------------------
+    speaker-dependent      bisakah mengenali emosi dari suara yang SUDAH
+                           pernah didengar saat latih?
+    speaker-independent    bisakah mengenali emosi dari suara ORANG ASING?
+
+Yang kedua yang menggambarkan keadaan sebenarnya: robot AiNex hampir selalu
+bicara dengan orang yang belum pernah didengar modelnya. Angkanya akan lebih
+rendah - itu memang seharusnya, bukan kemunduran.
 
 
 ===============================================================================

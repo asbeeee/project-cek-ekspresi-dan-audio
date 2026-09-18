@@ -65,6 +65,19 @@ python audio/scripts/organize_audio.py
 python audio/scripts/split_audio.py
 ```
 
+Untuk angka **speaker-independent** - penutur di test belum pernah terdengar
+saat latih - pakai `--by_penutur` dan keluarkan ke folder lain supaya dua-duanya
+ada di disk:
+
+```bash
+python audio/scripts/split_audio.py --by_penutur \
+    --dst audio/datasets/audio_emotion_spk
+```
+
+TESS cuma punya 2 penutur, jadi masuk train saja - dengan dua orang, menaruh
+salah satunya di test tidak mengukur apa pun. Akibatnya kelas `surprise` di
+test menyusut dari 289 jadi 47 berkas. Rinciannya di `DATASETS.txt` bagian B6.
+
 `organize_audio.py` melewati dataset yang foldernya belum ada, jadi aman
 dijalankan walau baru punya sebagian. `split_audio.py` MENGHAPUS `train/`,
 `val/`, dan `test/` lama sebelum mengisi ulang - harus begitu, karena begitu
@@ -321,8 +334,25 @@ datasetnya sendiri bertambah, jadi angkanya tidak sebanding satu lawan satu.
 | audio  |      0.5939 |      0.6419 |           0.6096 |           0.6632 |
 | fusion |      0.7734 |      0.8140 |           0.7570 |           0.7689 |
 
-Fusion tetap di atas kedua modalitas tunggalnya (wajah 0.6976, audio 0.6419),
-yang memang jadi alasan pendekatan ini dipakai.
+Fusion tetap di atas kedua modalitas tunggalnya, yang memang jadi alasan
+pendekatan ini dipakai. Bobot `ALPHA` ditentukan dengan sapuan, bukan ditebak:
+
+```bash
+python results_calculation.py fusion --data webcam/datasets/combined --sweep
+```
+
+| alpha | accuracy | macro-F1 |            |
+|------:|---------:|---------:|------------|
+|  0.00 |   0.6700 |   0.6286 | audio saja |
+|  0.40 |   0.8297 |   0.7898 |            |
+|  **0.50** | **0.8384** | **0.7961** | **dipakai sekarang** |
+|  0.60 |   0.8140 |   0.7689 | nilai lama |
+|  1.00 |   0.6976 |   0.6293 | visual saja |
+
+Fusion di alpha 0.50 unggul ~14pp dari modalitas tunggal terbaiknya, diukur di
+data yang sama. Ulangi sapuannya tiap kali salah satu model dilatih ulang -
+nilai terbaiknya bergantung pada seberapa bagus tiap model relatif terhadap
+yang lain.
 
 ### Catatan GPU
 

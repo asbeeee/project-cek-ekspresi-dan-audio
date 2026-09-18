@@ -103,13 +103,32 @@ else:
 # KONFIGURASI (default; bisa ditimpa lewat argumen CLI)
 # ===================================================================
 BASE_DIR = Path(__file__).resolve().parent
-VISUAL_MODEL_PATH = str(BASE_DIR / "webcam" / "models" / "fer2013_baseline-2" / "weights" / "best.pt")
+# Tiap run ultralytics menghasilkan weights/best.pt sendiri, jadi yang
+# menentukan modelnya adalah nama FOLDER-nya, bukan "best.pt"-nya. Sampai
+# 18 September 2026 baris ini masih menunjuk fer2013_baseline-2, yaitu run
+# paling awal - akurasinya 0.4741 di test gabungan sekarang, sementara model
+# di bawah ini 0.6976. Kalau melatih ulang, ganti nama foldernya di sini.
+VISUAL_MODEL_PATH = str(BASE_DIR / "webcam" / "models" / "gabungan_ferplus_expw" / "weights" / "best.pt")
 AUDIO_MODEL_PATH = str(BASE_DIR / "audio" / "models" / "best_audio_cnn.pt")
 
 # EMOTIONS, EMOTIONS_ID, SR, DURATION, N_MFCC, dan model audio diimpor dari
 # common.py supaya definisinya cuma ada di satu tempat.
 
-ALPHA = 0.6
+# Bobot modalitas visual; sisanya (1 - ALPHA) untuk audio. Nilainya bukan
+# tebakan - diukur dengan sapuan alpha 18 September 2026 memakai kedua model
+# yang dipakai sekarang, di test gabungan 9381 sampel:
+#
+#     alpha   accuracy   macro-F1
+#      0.00     0.6700     0.6286   <- audio saja
+#      0.40     0.8297     0.7898
+#      0.50     0.8384     0.7961   <- tertinggi di dua-duanya
+#      0.60     0.8140     0.7689   <- nilai lama
+#      1.00     0.6976     0.6293   <- visual saja
+#
+# Ulangi sapuannya tiap kali salah satu model dilatih ulang, nilai terbaiknya
+# bergantung pada seberapa bagus tiap model relatif terhadap yang lain:
+#     python results_calculation.py fusion --data webcam/datasets/combined --sweep
+ALPHA = 0.50
 TAU = 0.20
 TAU_CONF = 0.40
 
