@@ -1216,3 +1216,80 @@ BELUM  Pertanyaan yang sekarang terbuka: apakah FER2013 label asli sebenarnya
       13 perlu ditinjau ulang - dan itu keputusan yang cukup besar, karena
       seluruh dataset gabungan dibangun di atasnya.
 
+
+===============================================================================
+22. ABLASI LABEL: FER2013 ASLI TERNYATA MENGALAHKAN FER+ (22 September 2026)
+===============================================================================
+
+Pertanyaan yang dibuka bagian 21 sudah dijawab. Model ketiga dilatih di
+combined_fer2013 (fer2013 + expw + kdef), 62881 gambar latih, 20 epoch,
+33.9 menit, val top-1 terbaik 0.6274 di epoch 14.
+
+      webcam/models/gabungan_fer2013/
+
+ANGKA val TIDAK BISA DIBANDINGKAN ANTAR KETIGA MODEL. Val set-nya beda-beda
+(9398 / 3791 / 9613) dan sistem labelnya beda. 0.6274 yang paling rendah tidak
+berarti apa-apa sendirian.
+
+Perbandingan yang sah cuma di test set pihak ketiga - label yang tidak dipakai
+melatih model mana pun:
+
+        test set     n    FER++ExpW   FER+ saja   FER2013+ExpW
+        CK+        927       0.6526      0.6624         0.7638   acc
+                             0.5154      0.5369         0.6136   macro-F1
+        KDEF       504       0.9524      0.9286         0.9444   acc
+                             0.9524      0.9277         0.9445   macro-F1
+        ExpW      5527       0.5792      0.3369         0.5721   acc
+                             0.4900      0.3086         0.4836   macro-F1
+
+      FER2013 menang TELAK di CK+ (+11.1 poin acc, +9.8 poin macro-F1),
+      kalah tipis di KDEF (-0.8), dan imbang di ExpW (-0.7).
+
+KENAPA. Di CK+, model FER+ menghabiskan seperlima tebakannya untuk kelas
+      neutral - padahal CK+48 TIDAK PUNYA kelas neutral sama sekali:
+
+        model             tebak neutral   dari semua salahnya
+        FER+ + ExpW               20.6%                 59.3%
+        FER+ saja                 21.5%                 63.6%
+        FER2013 + ExpW             4.9%                 20.5%
+
+      Jadi 3 dari 5 kesalahan model FER+ di CK+ adalah menebak neutral.
+
+      Ini BUKAN artefak test set. Gambar CK+48 adalah 3 frame PUNCAK tiap
+      urutan - ekspresinya paling kuat, justru saat paling tidak mungkin
+      disebut netral. Menjawab "netral" untuk wajah marah pada intensitas
+      puncak adalah kesalahan sungguhan, dan untuk robot yang harus menanggapi
+      ekspresi orang, itu kesalahan yang mahal.
+
+      Sebabnya ada di proporsi data latih: neutral 35% di FER+ (9365 dari
+      26778) lawan 17% di FER2013 (4965 dari 28709). FER+ melabel-ulang banyak
+      wajah berekspresi lemah jadi neutral, dan model ikut belajar begitu.
+
+      Catatan penyeimbang: di KDEF dan ExpW ketiga model menebak neutral
+      dengan porsi yang kurang lebih benar. Gejalanya cuma muncul di CK+.
+
+SEBERAPA JAUH KEDUA LABEL ITU BERBEDA: dicek langsung, FER2013 dan FER+ TIDAK
+      SEPAKAT pada 11487 dari 33500 gambar (34.3%). Bukan dua versi yang mirip
+      - sepertiga datanya diberi jawaban berbeda.
+
+      Karena itu model FER2013 TIDAK diuji di test fer2013plus_, dan sebaliknya:
+      model akan dihukum untuk ketidaksepakatan label, bukan untuk salah
+      membaca ekspresi. Sebagai catatan saja, model FER2013 di test FER2013
+      aslinya dapat acc 0.6901 / macro-F1 0.6683 - angka ini TIDAK sebanding
+      dengan 0.8546 milik model FER+ di test FER+.
+
+SARAN: pindah ke FER2013 + ExpW + KDEF.
+      Alasannya CK+ adalah sumber label paling bisa dipercaya di proyek ini
+      (FACS coding), dan kecenderungan menebak neutral itu cacat nyata untuk
+      robot, bukan sekadar angka yang kurang bagus di satu tabel.
+
+      Yang harus ikut berubah kalau jadi pindah:
+        - combined/ dibangun ulang dengan --sources fer2013,expw,kdef
+        - VISUAL_MODEL di fusion_webcam.py dan results_calculation.py
+        - sapuan alpha diulang (angka fusion ikut berubah)
+        - DATASETS.txt A4 dan A6, README, dan bagian 13 perlu ditinjau
+
+      Yang menahan: di KDEF, FER+ masih sedikit lebih baik (0.9524 lawan
+      0.9444). Buktinya bertumpu pada satu test set (CK+, 927 gambar, 106
+      subjek). Jadi ini saran yang kuat, bukan kesimpulan yang tertutup.
+
