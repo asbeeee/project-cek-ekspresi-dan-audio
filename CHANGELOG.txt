@@ -1055,3 +1055,83 @@ PERBAIKAN  mode_fusion() juga mengabaikan --tag - cacat yang sama dengan
       results/*fusion_a0.60* yang lama dibiarkan sebagai catatan konfigurasi
       sebelum ALPHA diubah; jangan dipakai mewakili sistem sekarang.
 
+
+===============================================================================
+20. CK+ SEBAGAI DOMAIN UJI, DAN BUKTI AWAL BAHWA ExpW MERUGIKAN
+    (22 September 2026)
+===============================================================================
+
+BARU  webcam/datasets/ckplus_raw/ dan webcam/scripts/ckplus_build.py
+      CK+ (Extended Cohn-Kanade) masuk sebagai DOMAIN UJI, bukan data latih.
+      Isinya cuma 327 urutan (981 gambar) lawan 60950 gambar latih di
+      combined/, jadi menambahkannya ke data latih praktis tidak terasa.
+      Nilainya ada di tempat lain: wajah studio, ekspresi disengaja, label
+      hasil FACS coding - domain bersih yang belum pernah dilihat model mana
+      pun.
+
+      Dua versi CK+ diunduh. Yang dipakai CK+48 (981 PNG 48x48), BUKAN
+      ckextended.csv (920 baris), karena satu alasan menentukan: nama berkas
+      CK+48 memuat ID SUBJEK (S010_004_00000017.png), sementara CSV-nya tidak
+      memuat apa-apa soal subjek.
+
+      Itu menentukan karena tiap urutan CK+ diwakili TEPAT 3 FRAME BERURUTAN
+      yang nyaris identik - sudah dicek, 327 urutan x 3 frame = 981. Membagi
+      per gambar berarti frame 17 di train dan frame 18 dari urutan yang sama
+      di test. Itu kesalahan yang sama persis dengan yang bikin angka surprise
+      audio kelihatan 0.8990 padahal 0.3958 (bagian 16). Karena itu
+      ckplus_build.py SELALU membagi per subjek (106 subjek terpakai).
+
+      Label CK+48 dipetakan langsung dari nama folder. Untuk CSV-nya,
+      pemetaan 0-7 diverifikasi dengan mencocokkan jumlah tiap kelas ke
+      jumlah urutan resmi CK+ (anger 45, contempt 18, disgust 59, fear 25,
+      happy 69, sadness 28, surprise 83) - cocok semua, jadi pemetaannya
+      bukan tebakan.
+
+      contempt dibuang (54 gambar), sama seperti di ferplus_build.py.
+      CK+48 tidak punya kelas neutral sama sekali, jadi ujinya 6 kelas.
+
+BARU  webcam/datasets/combined_noexpw/ - fer2013plus + kdef, tanpa ExpW.
+      34830 train / 3791 val / 3854 test. Disiapkan untuk ablasi ExpW.
+
+TEMUAN AWAL: ExpW tampaknya MERUGIKAN di wajah bersih.
+      Diuji di CK+, domain yang tidak dipakai melatih model mana pun:
+
+        kelas       tanpa ExpW   dengan ExpW   selisih
+        angry           0.6415        0.3292    -0.3123
+        disgust         0.7000        0.4831    -0.2169
+        fear            0.4909        0.2759    -0.2150
+        sad             0.6851        0.5876    -0.0975
+        happy           0.9764        0.9787    +0.0023
+        surprise        0.9448        0.9537    +0.0089
+        accuracy        0.7843        0.6526    -0.1316
+        macro-F1        0.6341        0.5154    -0.1187
+
+      Polanya konsisten: kelas yang ekspresinya halus (angry, disgust, fear,
+      sad) jatuh 10-31 poin, sementara dua kelas yang paling kentara (happy,
+      surprise) tidak berubah. Sejalan dengan dugaan soal mutu label ExpW di
+      DATASETS.txt A5.
+
+      Gejala yang paling jelas: model dengan ExpW menebak NEUTRAL untuk 20.6%
+      gambar CK+, padahal CK+48 tidak punya kelas neutral sama sekali. Model
+      tanpa ExpW cuma 5.6%. ExpW menyumbang 5000 gambar neutral di train, dan
+      neutral memang kelas terbesar di combined (15513).
+
+PERINGATAN - INI BELUM ABLASI YANG BERSIH.
+      Pembanding "tanpa ExpW" di atas adalah merged_baseline, yang selain
+      tidak punya ExpW juga memakai label FER2013 ASLI, bukan FER+. Jadi ada
+      DUA perbedaan sekaligus dan angka di atas tidak bisa dipakai menyalahkan
+      ExpW sendirian.
+
+      Ablasi yang benar perlu model baru yang dilatih di combined_noexpw
+      (fer2013plus + kdef), supaya satu-satunya perbedaan adalah ExpW:
+
+        python webcam/scripts/training_yolo_.py --yes             --data webcam/datasets/combined_noexpw             --name gabungan_noexpw --workers 8 --batch 64
+
+      Lalu bandingkan kedua model di TIGA test set yang sama:
+        CK+     : --data webcam/datasets/ckplus
+        FER+    : --data webcam/datasets/combined --prefix fer2013plus_
+        KDEF    : --data webcam/datasets/combined --prefix kdef_
+        ExpW    : --data webcam/datasets/combined --prefix expw_
+      Yang terakhir penting sebagai penyeimbang: kalau ExpW dibuang, angka di
+      domain liar pasti turun. Pertanyaannya apakah itu sepadan.
+
