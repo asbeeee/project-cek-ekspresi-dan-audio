@@ -72,7 +72,7 @@ SUMBER = {
     'kdef': {'dir': DATASETS / "kdef", 'ulang': 4},
     'fer2013': {'dir': DATASETS / "fer2013", 'ulang': 1},
 }
-SUMBER_BAWAAN = ['fer2013plus', 'expw', 'kdef']
+SUMBER_BAWAAN = ['fer2013', 'expw', 'kdef']
 
 # Pasangan yang tidak boleh dipakai bersama: gambarnya sama, labelnya beda.
 BENTROK = [('fer2013', 'fer2013plus')]

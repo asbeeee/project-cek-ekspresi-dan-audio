@@ -62,18 +62,18 @@ from results_calculation import (
 )
 
 LAMA_DEFAULT = PROJECT_ROOT / "webcam" / "models" / "merged_baseline" / "weights" / "best.pt"
-BARU_DEFAULT = PROJECT_ROOT / "webcam" / "models" / "gabungan_ferplus_expw" / "weights" / "best.pt"
+BARU_DEFAULT = PROJECT_ROOT / "webcam" / "models" / "gabungan_fer2013" / "weights" / "best.pt"
 COMBINED_DIR = PROJECT_ROOT / "webcam" / "datasets" / "combined"
 
 # Prefix nama berkas di combined/, dipasang merge_datasets.py dari nama
 # sumbernya. Dulu 'fer_' dan 'kdef_'; sejak merge_datasets.py bisa menerima
 # sumber apa pun, prefiksnya jadi nama sumber itu sendiri - 'fer_' tidak ada
 # lagi dan skrip ini berhenti dengan "tidak ada file yang cocok".
-PREFIX_A, NAMA_A = 'fer2013plus_', 'FER+'
+PREFIX_A, NAMA_A = 'fer2013_', 'FER2013'
 PREFIX_B, NAMA_B = 'kdef_', 'KDEF'
 
 NAMA_MODEL_LAMA = 'model lama (FER2013 + KDEF)'
-NAMA_MODEL_BARU = 'model baru (FER+ + ExpW + KDEF)'
+NAMA_MODEL_BARU = 'model baru (FER2013 + ExpW + KDEF)'
 
 # ===================================================================
 # PALET (dari references/palette.md skill dataviz, sudah divalidasi)

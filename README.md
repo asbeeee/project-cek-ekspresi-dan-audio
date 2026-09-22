@@ -1,6 +1,6 @@
 
 Real-time multimodal emotion recognition:
-YOLO (wajah, FER+ + ExpW + KDEF) + CNN-MFCC (audio, RAVDESS + CREMA-D + SAVEE + TESS) → decision-level fusion.
+YOLO (wajah, FER2013 + ExpW + KDEF) + CNN-MFCC (audio, RAVDESS + CREMA-D + SAVEE + TESS) → decision-level fusion.
 Termasuk respons robot AiNex Hiwonder (lambaian tangan pada ekspresi *happy*).
 
 > **Respons lambaian sedang DIMATIKAN.** Kodenya masih lengkap, tapi pemicunya
@@ -134,17 +134,16 @@ python webcam/scripts/kdefTrain.py         # potong wajah KDEF    -> kdef/
 python webcam/scripts/merge_datasets.py    # gabungkan            -> combined/
 ```
 
-**FERPlus bukan gambar baru** - isinya label ulang untuk gambar FER2013 yang
-sama, hasil voting 10 anotator, dipasangkan menurut urutan baris CSV.
-`ferplus_build.py` menggambar ulang pikselnya dari `fer2013.csv` karena nama
-berkas JPG di `fer2013/` adalah ID acak Kaggle, bukan nomor baris.
+**Label FER+ sempat dipakai, lalu dibatalkan 22 September 2026.** Di atas
+kertas FER+ lebih baik (10 anotator lawan 1), tapi diukur di test set berlabel
+pihak ketiga ternyata kalah - terutama karena model FER+ terlalu sering
+menjawab `neutral`. Rinciannya di `DATASETS.txt` bagian A4.
 
-Perlu diketahui: FER+ membuat kelas `disgust` MENYUSUT dari 436 ke 175 gambar
-latih. ExpW yang menambalnya kembali ke 4114. Jangan memakai `fer2013` dan
-`fer2013plus` bersamaan - gambarnya sama, labelnya beda, dan
-`merge_datasets.py` menolak kombinasi itu.
+`ferplus_build.py` tetap ada dan tetap jalan kalau percobaannya mau diulang.
+Jangan memakai `fer2013` dan `fer2013plus` bersamaan - gambarnya sama, labelnya
+beda pada 34.3% kasus, dan `merge_datasets.py` menolak kombinasi itu.
 
-Hasil gabungannya 79729 berkas: 60950 train, 9398 val, 9381 test.
+Hasil gabungannya 82116 berkas: 62881 train, 9613 val, 9622 test.
 
 ## Setup
 
@@ -301,38 +300,30 @@ person-independent.
 Di domain lamanya praktis impas (accuracy -0.8pp, macro-F1 +0.2pp), sementara di
 domain barunya naik drastis (+40.7pp accuracy).
 
-### Hasil sekarang (FER+ + ExpW + KDEF, 20 epoch, RTX 4060, ~31 menit)
+### Hasil sekarang (FER2013 + ExpW + KDEF, 20 epoch, RTX 4060, ~34 menit)
 
-Model: `webcam/models/gabungan_ferplus_expw/weights/best.pt`
-(yolov8n-cls, batch 64, workers 8, val top-1 terbaik 0.6964 di epoch 19).
+Model: `webcam/models/gabungan_fer2013/weights/best.pt`
+(yolov8n-cls, batch 64, workers 4, val top-1 terbaik 0.6274 di epoch 14).
 
-KEDUA model diuji di test set yang SAMA (`webcam/datasets/combined`, 9381
-gambar), jadi selisihnya murni beda model - bukan beda data uji.
+Diukur terpisah per domain, plus CK+ sebagai domain uji luar yang tidak dipakai
+melatih model mana pun:
 
-| test set          |     n | acc lama | acc baru | macro-F1 lama | macro-F1 baru |
-|-------------------|------:|---------:|---------:|--------------:|--------------:|
-| gabungan (semua)  |  9381 |   0.4741 |   0.6976 |        0.4306 |        0.6293 |
-| FER+              |  3350 |   0.6773 |   0.8546 |        0.5934 |        0.7359 |
-| ExpW              |  5527 |   0.3094 |   0.5792 |        0.2885 |        0.4900 |
-| KDEF              |   504 |   0.9306 |   0.9524 |        0.9296 |        0.9524 |
+| domain uji | n | accuracy | macro-F1 |
+|------------|--:|---------:|---------:|
+| gabungan (semua) | 9622 | 0.6356 | 0.5913 |
+| FER2013 | 3591 | 0.6901 | 0.6683 |
+| ExpW | 5527 | 0.5721 | 0.4836 |
+| KDEF | 504 | 0.9444 | 0.9445 |
+| **CK+** | 927 | **0.7638** | **0.6136** |
 
-Baris ExpW memang diharapkan melonjak - model lama tidak pernah melihat ExpW
-sama sekali. Yang lebih informatif adalah **FER+ naik 17.7pp** (label yang lebih
-bersih memang lebih mudah dipelajari) dan **KDEF tetap naik 2.2pp** walau
-porsinya di data latih turun dari 21.9% ke 13.2%.
+Angka gabungan (0.6356) ditarik turun oleh ExpW, yang isinya 57% dari test set
+dan labelnya paling berisik. Yang lebih menggambarkan pemakaian sebenarnya -
+wajah pada jarak percakapan - adalah KDEF dan CK+.
 
-F1 per kelas di test gabungan, kelas yang paling banyak berubah:
-
-| kelas    | F1 lama | F1 baru |
-|----------|--------:|--------:|
-| takut    |  0.1991 |  0.5043 |
-| marah    |  0.4223 |  0.6607 |
-| netral   |  0.4872 |  0.7097 |
-| jijik    |  0.2006 |  0.3287 |
-
-`jijik` tetap yang paling lemah (0.3287). Itu wajar: FER+ cuma menyisakan 175
-gambar latih untuk kelas ini, dan tambalan dari ExpW justru kelas yang labelnya
-paling berisik.
+**Jangan bandingkan angka ini dengan hasil FER+ sebelumnya secara langsung.**
+Test set-nya beda (9622 lawan 9381) DAN sistem labelnya beda; FER2013 dan FER+
+tidak sepakat pada 34.3% gambar. Perbandingan yang sah cuma di CK+, KDEF, dan
+ExpW - tabel lengkapnya di `DATASETS.txt` bagian A4.
 
 ### Audio dan fusion
 
@@ -342,7 +333,9 @@ datasetnya sendiri bertambah, jadi angkanya tidak sebanding satu lawan satu.
 | model  | acc sebelum | acc sesudah | macro-F1 sebelum | macro-F1 sesudah |
 |--------|------------:|------------:|-----------------:|-----------------:|
 | audio  |      0.5939 |      0.6419 |           0.6096 |           0.6632 |
-| fusion |      0.7734 |      0.8140 |           0.7570 |           0.7689 |
+
+Fusion dengan model wajah yang sekarang (22 September 2026): **acc 0.8020,
+macro-F1 0.7736** di 9622 sampel test gabungan.
 
 Fusion tetap di atas kedua modalitas tunggalnya, yang memang jadi alasan
 pendekatan ini dipakai. Bobot `ALPHA` ditentukan dengan sapuan, bukan ditebak:
@@ -353,14 +346,15 @@ python results_calculation.py fusion --data webcam/datasets/combined --sweep
 
 | alpha | accuracy | macro-F1 |            |
 |------:|---------:|---------:|------------|
-|  0.00 |   0.6700 |   0.6286 | audio saja |
-|  0.40 |   0.8297 |   0.7898 |            |
-|  **0.50** | **0.8384** | **0.7961** | **dipakai sekarang** |
-|  0.60 |   0.8140 |   0.7689 | nilai lama |
-|  1.00 |   0.6976 |   0.6293 | visual saja |
+|  0.00 |   0.6633 |   0.6404 | audio saja |
+|  0.40 |   0.7937 |   0.7668 |            |
+|  **0.50** | **0.8020** | **0.7736** | **dipakai sekarang** |
+|  0.60 |   0.7748 |   0.7444 |            |
+|  1.00 |   0.6356 |   0.5913 | visual saja |
 
 Fusion di alpha 0.50 unggul ~14pp dari modalitas tunggal terbaiknya, diukur di
-data yang sama. Ulangi sapuannya tiap kali salah satu model dilatih ulang -
+data yang sama. Alpha optimalnya tetap 0.50 walau model wajahnya diganti -
+sudah disapu ulang, bukan diasumsikan. Ulangi sapuannya tiap kali salah satu model dilatih ulang -
 nilai terbaiknya bergantung pada seberapa bagus tiap model relatif terhadap
 yang lain.
 
@@ -444,10 +438,14 @@ python webcam/scripts/merge_datasets.py --sources fer2013,kdef --force   # basel
 
 | sumber | jumlah | bentuk |
 |--------|--------|--------|
-| `fer2013plus` | 33500 | 48x48 abu-abu, label FER+ |
+| `fer2013` | 35887 | 48x48 abu-abu, label asli - **dipakai sekarang** |
 | `expw` | 37254 | 224x224 abu-abu, wajah dipotong dari foto liar |
 | `kdef` | 2936 | 224x224 warna, studio |
-| `fer2013` | 35887 | 48x48 abu-abu, label asli (jangan digabung dengan `fer2013plus`) |
+| `fer2013plus` | 33500 | 48x48 abu-abu, label FER+ (dibatalkan, lihat DATASETS.txt A4) |
+
+Selain itu ada `webcam/datasets/ckplus/` (927 gambar) yang dipakai **hanya
+sebagai domain uji**, tidak pernah untuk latih - dibuat dengan
+`webcam/scripts/ckplus_build.py`.
 
 ### Audio CNN - BUTUH `--yes` juga
 

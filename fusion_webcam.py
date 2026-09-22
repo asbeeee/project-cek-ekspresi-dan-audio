@@ -128,7 +128,7 @@ BASE_DIR = Path(__file__).resolve().parent
 # 18 September 2026 baris ini masih menunjuk fer2013_baseline-2, yaitu run
 # paling awal - akurasinya 0.4741 di test gabungan sekarang, sementara model
 # di bawah ini 0.6976. Kalau melatih ulang, ganti nama foldernya di sini.
-VISUAL_MODEL_PATH = str(BASE_DIR / "webcam" / "models" / "gabungan_ferplus_expw" / "weights" / "best.pt")
+VISUAL_MODEL_PATH = str(BASE_DIR / "webcam" / "models" / "gabungan_fer2013" / "weights" / "best.pt")
 AUDIO_MODEL_PATH = str(BASE_DIR / "audio" / "models" / "best_audio_cnn.pt")
 
 # EMOTIONS, EMOTIONS_ID, SR, DURATION, N_MFCC, dan model audio diimpor dari

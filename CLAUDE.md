@@ -19,6 +19,8 @@ Ini berlaku untuk semua yang berjalan lama dan menghasilkan progres bertahap:
 Yang boleh dijalankan sendiri: penyusunan/penyalinan dataset, evaluasi,
 inferensi, dan skrip cek - semuanya selesai dalam hitungan menit.
 
+## Jangan upload ke github langsung. setelah user bilang saja
+
 ## Konteks proyek
 
 - Mesin ini punya **NVIDIA RTX 4060 (8.6 GB)** dan torch build CUDA. Skrip lama

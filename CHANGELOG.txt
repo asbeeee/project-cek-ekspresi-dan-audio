@@ -1293,3 +1293,72 @@ SARAN: pindah ke FER2013 + ExpW + KDEF.
       0.9444). Buktinya bertumpu pada satu test set (CK+, 927 gambar, 106
       subjek). Jadi ini saran yang kuat, bukan kesimpulan yang tertutup.
 
+
+===============================================================================
+23. PINDAH KE LABEL FER2013: BANGUN ULANG, ARAHKAN ULANG, HITUNG ULANG
+    (22 September 2026)
+===============================================================================
+
+Menjalankan saran di bagian 22. Keputusan memakai FER+ di bagian 13 dibatalkan.
+
+BANGUN ULANG  webcam/datasets/combined/ sekarang fer2013 + expw + kdef.
+        split      fer2013    expw    kdef    total
+        train        28709   26120    8052    62881
+        val           3587    5607     419     9613
+        test          3591    5527     504     9622
+
+      SUMBER_BAWAAN di merge_datasets.py ikut diganti jadi
+      ['fer2013','expw','kdef'], supaya menjalankannya tanpa argumen
+      menghasilkan susunan yang benar.
+
+      Ketimpangan kelas di train turun dari 6.1x (susunan FER+) jadi 3.1x,
+      karena FER2013 menyimpan 436 gambar disgust sementara FER+ cuma 175.
+
+      webcam/datasets/combined_fer2013/ dihapus - isinya identik dengan
+      combined/ yang baru, jadi cuma menghabiskan ruang dan bikin bingung
+      mana yang dipakai.
+
+ARAHKAN ULANG  VISUAL_MODEL di fusion_webcam.py dan results_calculation.py
+      sekarang webcam/models/gabungan_fer2013/weights/best.pt.
+
+      results_figures.py: PREFIX_A/NAMA_A diganti 'fer2013plus_'/'FER+' jadi
+      'fer2013_'/'FER2013', dan BARU_DEFAULT ikut pindah. Tanpa ini figurnya
+      berhenti dengan "tidak ada file yang cocok" - persis kemunduran yang
+      terjadi di bagian 19, dan alasan prefiksnya dijadikan konstanta waktu itu.
+
+HITUNG ULANG  Semua angka wajah dan fusion dihitung ulang.
+
+        domain uji          n      acc   macro-F1
+        gabungan (semua) 9622   0.6356     0.5913
+        FER2013          3591   0.6901     0.6683
+        ExpW             5527   0.5721     0.4836
+        KDEF              504   0.9444     0.9445
+        CK+               927   0.7638     0.6136
+
+      Sapuan alpha diulang dengan model wajah yang baru:
+
+        alpha   accuracy   macro-F1
+         0.00     0.6633     0.6404   <- audio saja
+         0.40     0.7937     0.7668
+         0.50     0.8020     0.7736   <- tertinggi, TIDAK berubah
+         0.60     0.7748     0.7444
+         1.00     0.6356     0.5913   <- visual saja
+
+      ALPHA tetap 0.50. Disapu ulang, bukan diasumsikan - dugaan soal
+      pergeseran alpha sudah pernah salah di bagian 15.
+
+      Fusion sekarang acc 0.8020 / macro-F1 0.7736 di 9622 sampel.
+      Ambang keputusan: TUNGGAL 71.0% (akurasi 0.9178), MAJEMUK 9.7%
+      (label asli di top-2: 0.8798), TIDAK YAKIN 19.3%.
+
+      JANGAN membandingkan 0.8020 dengan 0.8384 milik susunan FER+ secara
+      langsung: test set-nya beda (9622 lawan 9381) dan sistem labelnya beda.
+      Perbandingan yang sah ada di bagian 22, di CK+/KDEF/ExpW.
+
+REVISI  DATASETS.txt A1 (FER2013 kembali jadi sumber utama), A4 (FERPlus jadi
+      "dicoba lalu dibatalkan", lengkap dengan alasan dan angkanya), A6
+      (susunan dan hasil baru), tabel ringkasan bagian C; README bagian judul,
+      dataset, hasil, dan tabel alpha.
+
+      Keempat figur di results/ dirender ulang dengan model baru.
+

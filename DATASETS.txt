@@ -3,7 +3,8 @@ DATASET YANG DIPAKAI
 Multimodal Emotion Recognition (wajah + suara) + respons robot AiNex
 
 Disusun    : 10 September 2026
-Diperbarui : 18 September 2026 - SAVEE + TESS di suara; FER+ dan ExpW di wajah
+Diperbarui : 22 September 2026 - label FER+ DIBATALKAN, kembali ke FER2013 asli
+             (18 Sep 2026: SAVEE + TESS di suara; FER+ dan ExpW di wajah)
 
 Semua angka di bawah dihitung langsung dari isi folder di komputer ini, bukan
 dari dokumentasi dataset. Bagian "YANG BELUM DIKETAHUI" di paling bawah berisi
@@ -18,15 +19,14 @@ A1. FER2013
 -----------
 Lokasi   : webcam/datasets/fer2013/
 Format   : JPG 48x48, grayscale
-Dipakai  : SEBAGIAN - sejak 18 September 2026 label aslinya digantikan FER+
-           (lihat A4). Yang masih dipakai cuma fer2013.csv-nya sebagai sumber
-           PIKSEL; folder gambar train/val/test-nya tidak lagi masuk dataset
-           gabungan. Baseline lama masih bisa dibuat ulang dengan
-           --sources fer2013,kdef.
+Dipakai  : YA - sumber wajah utama, dengan LABEL ASLINYA.
 
-Berkas fer2013.csv aslinya masih ada di folder itu - dan sekarang justru
-berkas itulah bagian FER2013 yang paling penting, karena ferplus_build.py
-menggambar ulang semua gambarnya dari sana.
+           Sempat digantikan label FER+ antara 18 dan 22 September 2026, lalu
+           dikembalikan setelah ablasi menunjukkan label aslinya lebih baik di
+           test set yang labelnya dari pihak ketiga - lihat A4.
+
+Berkas fer2013.csv aslinya masih ada di folder itu, dan tetap berguna sebagai
+sumber piksel untuk ferplus_build.py kalau percobaan FER+ mau diulang.
 
 Pembagian yang dipakai:
     train           28709 gambar
@@ -110,68 +110,64 @@ A4. FERPlus (FER+)
 ------------------
 Lokasi   : webcam/datasets/FERPlus/        <- sumber label
            webcam/datasets/fer2013plus/    <- hasil, dibuat sendiri
-Dipakai  : YA - sejak 18 September 2026, MENGGANTIKAN label FER2013 asli
+Dipakai  : TIDAK - sempat dipakai 18-22 September 2026, lalu DIBATALKAN
 
 FERPlus BUKAN kumpulan gambar baru. Isinya label ULANG untuk gambar FER2013
 yang itu-itu juga: tiap gambar dinilai 10 anotator, hasilnya di fer2013new.csv
-berupa jumlah suara per emosi. Label FER2013 asli cuma dari satu anotator.
+berupa jumlah suara per emosi, dipasangkan menurut urutan baris. Dibangun
+dengan webcam/scripts/ferplus_build.py (skripnya tetap ada dan tetap jalan).
 
-Cara dipasangkan: fer2013new.csv dan fer2013.csv dicocokkan menurut URUTAN
-BARIS - baris ke-N di satu berkas adalah baris ke-N di berkas lain. Keduanya
-35887 baris.
+Dari 35887 baris, 33500 terpakai; sisanya dibuang karena seri di posisi
+teratas (1776), menang 'unknown' (222), 'contempt' (212), atau 'NF' (177).
 
-Kenapa gambarnya digambar ulang dari fer2013.csv, bukan memakai JPG yang sudah
-ada di webcam/datasets/fer2013/: nama berkas JPG di situ (Training_10118481.jpg)
-adalah ID acak dari unggahan Kaggle, bukan nomor baris, jadi tidak ada cara
-memasangkannya dengan fer2013new.csv. Piksel aslinya ada di CSV, dan nomor
-barisnya jelas. Hasilnya dinamai fer0000000.png mengikuti penamaan FERPlus
-sendiri supaya bisa ditelusuri balik.
+KENAPA DIBATALKAN
+-----------------
+Di atas kertas FER+ jelas lebih baik: 10 anotator lawan 1. Diukur, ternyata
+tidak. Tiga model dilatih dan diuji di test set yang labelnya dari PIHAK
+KETIGA - label yang tidak dipakai melatih model mana pun:
 
-Dibuat dengan: python webcam/scripts/ferplus_build.py
+    test set     n    FER++ExpW   FER+ saja   FER2013+ExpW
+    CK+        927       0.6526      0.6624         0.7638   acc
+    KDEF       504       0.9524      0.9286         0.9444   acc
+    ExpW      5527       0.5792      0.3369         0.5721   acc
 
-Label ditentukan suara terbanyak. Yang dibuang dari 35887 baris:
-    seri di posisi teratas    1776   <- 10 anotator pun tidak sepakat
-    menang 'unknown'           222
-    menang 'contempt'          212   <- proyek ini cuma 7 kelas
-    menang 'NF' (not a face)   177
-    dipakai                  33500
+FER2013 unggul 11.1 poin di CK+, kalah 0.8 di KDEF, imbang di ExpW.
 
-Split memakai kolom Usage bawaan FER2013, bukan pengacakan sendiri:
-    Training -> train, PublicTest -> val, PrivateTest -> test
-Ini pembagian resmi yang dipakai makalah-makalah FER+, jadi angkanya bisa
-dibandingkan dengan literatur. Kebetulan hasilnya mirip pembagian lama proyek
-ini (3587/3591 lawan 3372/3350), tapi asalnya beda: yang lama hasil pecahan
-sendiri dengan seed 42, yang ini pembagian bawaan datasetnya.
+Sebabnya kelihatan jelas di CK+. Model FER+ memakai seperlima tebakannya untuk
+kelas neutral, padahal CK+48 TIDAK PUNYA kelas neutral sama sekali:
 
-Jumlah per kelas:
-    kelas       train    val   test  total
-    --------   ------  -----  -----  -----
-    angry        2399    310    316   3025
-    disgust       175     31     22    228   <- lihat peringatan di bawah
-    fear          648     73     92    813
-    happy        7410    880    909   9199
-    neutral      9365   1242   1166  11773
-    sad          3403    395    424   4222
-    surprise     3378    441    421   4240
-    --------   ------  -----  -----  -----
-    TOTAL       26778   3372   3350  33500
+    model             tebak neutral   porsi dari semua salahnya
+    FER+ + ExpW               20.6%                      59.3%
+    FER+ saja                 21.5%                      63.6%
+    FER2013 + ExpW             4.9%                      20.5%
 
-PERINGATAN - FER+ MEMBUAT DISGUST MAKIN LANGKA, BUKAN MEMBAIK.
-    FER2013 asli punya 436 gambar disgust di train; FER+ menyisakan 175.
-    Sebagian besar yang dulu dilabeli disgust ternyata dinilai emosi lain oleh
-    10 anotator. Ketimpangan train naik dari 16.4x (FER2013) ke 53.5x (FER+).
-    Jadi FER+ menukar label yang lebih bersih dengan kelas disgust yang nyaris
-    habis. Itu alasan utama ExpW ditambahkan - lihat A5.
+Ini bukan artefak test set: gambar CK+48 adalah 3 frame PUNCAK tiap urutan,
+justru saat ekspresi paling kuat dan paling tidak mungkin disebut netral.
+Untuk robot yang harus menanggapi ekspresi, menjawab "netral" ke wajah marah
+pada intensitas puncak adalah kegagalan yang mahal.
 
-JANGAN dipakai bersamaan dengan fer2013 di merge_datasets.py. Gambarnya sama
-persis, labelnya beda, jadi menggabungnya berarti memberi model dua jawaban
-yang bertabrakan untuk wajah yang sama. Skrip itu menolak kombinasinya.
+Akarnya ada di proporsi data latih: neutral 35% di FER+ (9365 dari 26778)
+lawan 17% di FER2013 (4965 dari 28709). FER+ melabel-ulang banyak wajah
+berekspresi lemah jadi neutral, dan model ikut belajar begitu.
 
-Catatan soal nama folder: keluarannya sengaja dinamai fer2013plus, BUKAN
-ferplus. Windows tidak membedakan huruf besar-kecil, jadi 'ferplus' menunjuk
-folder yang sama dengan 'FERPlus' - sumbernya sendiri - dan --force akan
-menghapusnya. ferplus_build.py sekarang menolak kalau folder tujuannya berisi
-berkas sumber.
+SEBERAPA BEDA KEDUA LABEL ITU: dihitung langsung, FER2013 dan FER+ TIDAK
+SEPAKAT pada 11487 dari 33500 gambar - 34.3%. Sepertiga datanya diberi
+jawaban berbeda, jadi ini memang dua sistem label yang berbeda, bukan dua
+versi yang mirip.
+
+Konsekuensinya untuk pengujian: model FER2013 TIDAK boleh diuji dengan label
+FER+ dan sebaliknya - yang terukur jadi ketidaksepakatan label, bukan
+kemampuan membaca ekspresi. Karena itu perbandingannya cuma di CK+, KDEF, dan
+ExpW.
+
+YANG MASIH MENAHAN: di KDEF, FER+ tetap sedikit lebih baik (0.9524 lawan
+0.9444). Buktinya bertumpu berat pada satu test set (CK+, 927 gambar, 106
+subjek). Keputusannya kuat, tapi bukan mustahil ditinjau lagi kalau ada
+domain uji bersih yang lain.
+
+webcam/datasets/fer2013plus/ dibiarkan ada supaya percobaannya bisa diulang
+tanpa membangun ulang. merge_datasets.py tetap menolak menggabung fer2013 dan
+fer2013plus bersamaan.
 
 
 A5. ExpW (Expression in-the-Wild)
@@ -251,67 +247,45 @@ MUTU LABELNYA PERLU DISEBUT DI LAPORAN.
 A6. Dataset wajah gabungan
 --------------------------
 Lokasi : webcam/datasets/combined/   (dibuat webcam/scripts/merge_datasets.py)
-Isi    : FER+ + ExpW + KDEF, semuanya grayscale
+Isi    : FER2013 + ExpW + KDEF, semuanya grayscale
 
-Susunan lama (FER2013 + KDEF, 44862 berkas) digantikan 18 September 2026.
-Bisa dibuat ulang kapan saja dengan:
+Dibangun ulang 22 September 2026 waktu label FER+ dibatalkan. Dibuat dengan
+merge_datasets.py tanpa argumen tambahan (sumber bawaannya sudah fer2013,
+expw, kdef):
+
+    split      fer2013    expw    kdef    total
+    train        28709   26120    8052    62881
+    val           3587    5607     419     9613
+    test          3591    5527     504     9622
+    TOTAL        35887   37254    8975    82116
+
+    porsi di train: FER2013 45.7%, ExpW 41.5%, KDEF 12.8%
+
+    KDEF diulang 4x di split train saja (--repeat kdef=4). Val dan test tidak
+    diulang - mengulang di situ cuma membuat bobot metrik menyimpang tanpa
+    menambah informasi. Semua dijadikan grayscale supaya model tidak memakai
+    warna sebagai petunjuk asal dataset.
+
+Ketimpangan antar kelas di train 3.1x (happy 13369 lawan disgust 4375) - jauh
+lebih baik daripada susunan FER+ yang 6.1x, karena FER2013 menyimpan 436
+gambar disgust sementara FER+ cuma menyisakan 175.
+
+Susunan lain masih bisa dibuat ulang kapan saja:
+    python webcam/scripts/merge_datasets.py --sources fer2013plus,expw,kdef --force
     python webcam/scripts/merge_datasets.py --sources fer2013,kdef --force
-
-Susunan sekarang, dibuat dengan merge_datasets.py tanpa argumen tambahan:
-
-    split   fer2013plus    expw    kdef    total
-    train         26778   26120    8052    60950
-    val            3372    5607     419     9398
-    test           3350    5527     504     9381
-    TOTAL         33500   37254    8975    79729
-
-    porsi di train: FER+ 43.9%, ExpW 42.9%, KDEF 13.2%
-
-    KDEF diulang 4x di split train saja (--repeat kdef=4), supaya porsinya
-    tidak cuma 3.6%. Val dan test tidak diulang - mengulang di situ cuma
-    membuat bobot metrik menyimpang tanpa menambah informasi.
-    Semua dijadikan grayscale supaya model tidak memakai warna sebagai
-    petunjuk asal dataset.
-
-Jumlah per kelas di train:
-    kelas      fer2013plus   expw   kdef   total
-    --------   -----------  -----  -----  ------
-    angry             2399   2595   1152    6146
-    disgust            175   2795   1144    4114
-    fear               648    754   1152    2554   <- paling sedikit
-    happy             7410   5002   1152   13564
-    neutral           9365   5000   1148   15513   <- paling banyak
-    sad               3403   5000   1152    9555
-    surprise          3378   4974   1152    9504
-
-Inilah gunanya ExpW: disgust yang cuma 175 gambar di FER+ naik jadi 4114.
-Ketimpangan antar kelas di train turun jauh:
-
-    FER2013 asli      16.4x
-    FER+ sendirian    53.5x   <- disgust nyaris habis
-    gabungan sekarang  6.1x   (neutral 15513 lawan fear 2554)
-
-Sekarang fear yang paling sedikit, bukan disgust.
 
 CATATAN EVALUASI: split test di sini gabungan tiga domain yang beda jauh.
 Untuk laporan, ukur juga di test masing-masing dataset secara TERPISAH -
 angka gabungan menyembunyikan pertukaran antar-domain.
 
-Sudah dilatih dan diukur 18 September 2026, hasilnya di CHANGELOG.txt bagian
-14 dan di results/figur_sesi_18sep.png. Ringkasnya, diuji di test set yang
-sama untuk kedua model:
+Hasil model yang dipakai sekarang (webcam/models/gabungan_fer2013/):
 
-    test set            n     acc lama  acc baru
-    ----------------  -----  ---------  --------
-    gabungan (semua)   9381     0.4741    0.6976
-    FER+               3350     0.6773    0.8546
-    ExpW               5527     0.3094    0.5792
-    KDEF                504     0.9306    0.9524
-
-Peringatan soal ExpW di A5 terbukti: kelas jijik tetap yang paling lemah
-(F1 0.3287) walau jumlahnya naik dari 175 ke 4114, karena tambahannya justru
-dari sumber yang labelnya paling berisik. Menambah jumlah tidak sama dengan
-menambah mutu.
+    domain uji          n      acc   macro-F1
+    gabungan (semua) 9622   0.6356     0.5913
+    FER2013          3591   0.6901     0.6683
+    ExpW             5527   0.5721     0.4836
+    KDEF              504   0.9444     0.9445
+    CK+               927   0.7638     0.6136   <- domain uji luar
 
 
 ===============================================================================
@@ -563,10 +537,11 @@ C. RINGKASAN SATU HALAMAN
 
     dataset     modalitas  jumlah mentah  dipakai?  keterangan
     ---------   ---------  -------------  --------  -----------------------
-    FER2013     wajah      35887 gambar   TIDAK     digantikan label FER+
-    FERPlus     wajah       (anotasi)     YA        33500 dipakai, label ulang
+    FER2013     wajah      35887 gambar   YA        sumber utama, label asli
+    FERPlus     wajah       (anotasi)     TIDAK     dicoba lalu dibatalkan, A4
     ExpW        wajah      91793 wajah    YA        37254 dipakai (--cap 5000)
     KDEF        wajah       4900 gambar   YA        2936 terpakai (S/HL/HR)
+    CK+         wajah        981 gambar   UJI SAJA  927 dipakai, domain uji
     AKDEF       wajah         70 gambar   TIDAK     berisiko bocor ke test
     RAVDESS     suara       1440 wav      YA        speech saja, 24 aktor
     CREMA-D     suara       7442 wav      YA        tanpa kelas surprise

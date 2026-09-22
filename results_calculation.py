@@ -46,7 +46,7 @@ COMBINED_DIR = PROJECT_ROOT / "webcam" / "datasets" / "combined"
 AUDIO_DIR = PROJECT_ROOT / "audio" / "datasets" / "audio_emotion"
 # Nama FOLDER-nya yang menentukan model mana, bukan "best.pt"-nya - tiap run
 # ultralytics punya best.pt sendiri. Harus sama dengan fusion_webcam.py.
-VISUAL_MODEL = PROJECT_ROOT / "webcam" / "models" / "gabungan_ferplus_expw" / "weights" / "best.pt"
+VISUAL_MODEL = PROJECT_ROOT / "webcam" / "models" / "gabungan_fer2013" / "weights" / "best.pt"
 AUDIO_MODEL = PROJECT_ROOT / "audio" / "models" / "best_audio_cnn.pt"
 OUT_DIR = PROJECT_ROOT / "results"
 CACHE_DIR = OUT_DIR / "cache"
