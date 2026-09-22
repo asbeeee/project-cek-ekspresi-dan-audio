@@ -1135,3 +1135,84 @@ PERINGATAN - INI BELUM ABLASI YANG BERSIH.
       Yang terakhir penting sebagai penyeimbang: kalau ExpW dibuang, angka di
       domain liar pasti turun. Pertanyaannya apakah itu sepadan.
 
+
+===============================================================================
+21. ABLASI ExpW - DUGAAN DI BAGIAN 20 TERNYATA SALAH SASARAN
+    (22 September 2026)
+===============================================================================
+
+Bagian 20 mencatat "bukti awal bahwa ExpW merugikan" dan sudah memperingatkan
+sendiri bahwa itu belum ablasi yang bersih. Ablasinya sekarang sudah dijalankan
+dan hasilnya MEMBALIK kesimpulannya: yang merugikan bukan ExpW, melainkan FER+.
+
+MODEL  webcam/models/gabungan_noexpw/ - dilatih di combined_noexpw
+       (fer2013plus + kdef), yolov8n-cls, 20 epoch, batch 64, workers 4,
+       15.9 menit. Val top-1 terbaik 0.8594 di epoch 18.
+
+       CATATAN: angka 0.8594 itu TIDAK sebanding dengan 0.6964 milik model
+       ber-ExpW. Val set-nya beda - 3791 gambar tanpa wajah liar lawan 9398
+       dengan ExpW. Membandingkan keduanya langsung menghasilkan "kenaikan"
+       16 poin yang seluruhnya artefak pemilihan data.
+
+HASIL ABLASI. Kedua model diuji di empat test set yang SAMA. Satu-satunya
+      perbedaan antar model adalah ada/tidaknya ExpW di data latih.
+
+        test set     n      acc dgn   acc tnp    selisih
+        CK+        927       0.6526    0.6624     +0.0097
+        FER+      3350       0.8546    0.8552     +0.0006
+        KDEF       504       0.9524    0.9286     -0.0238
+        ExpW      5527       0.5792    0.3369     -0.2423
+
+      Membuang ExpW: praktis tidak mengubah apa-apa di wajah bersih (CK+ naik
+      1 poin, FER+ naik 0.06 poin), MERUGIKAN di KDEF (turun 2.4 poin), dan
+      menghancurkan kemampuan di wajah liar (turun 24.2 poin).
+
+      Jadi jawaban pertanyaannya: TIDAK, ExpW tidak merugikan. ExpW dipertahankan.
+
+YANG SEBENARNYA TERJADI. Tiga model diuji di CK+ yang sama:
+
+        data latih                 acc CK+   tebakan 'neutral'
+        FER2013 + KDEF              0.7843               5.6%
+        FER+ + KDEF                 0.6624              21.5%
+        FER+ + ExpW + KDEF          0.6526              20.6%
+
+      Penurunan 13 poin yang di bagian 20 ditimpakan ke ExpW sebenarnya
+      terbagi begini:
+        FER2013 -> FER+   : -12.2 poin   <- ini penyebabnya
+        tambah ExpW       :  -1.0 poin
+
+      Gejala tebakan 'neutral' juga milik FER+, bukan ExpW: 5.6% -> 21.5%
+      begitu label diganti ke FER+, lalu tidak berubah waktu ExpW ditambahkan.
+      Masuk akal kalau dilihat porsinya: neutral di train FER+ 9365 dari 26778
+      (35%), sementara di FER2013 4965 dari 28709 (17%). FER+ memang
+      melabel-ulang banyak gambar jadi neutral.
+
+      F1 per kelas di CK+ menunjukkan kelas mana yang dikorbankan FER+:
+        kelas      FER2013+KDEF   FER++KDEF   selisih
+        angry            0.6415      0.2833    -0.3582
+        disgust          0.7000      0.6008    -0.0992
+        fear             0.4909      0.3516    -0.1393
+        sad              0.6851      0.5860    -0.0991
+        happy            0.9764      0.9834    +0.0070
+        surprise         0.9448      0.9533    +0.0085
+
+      Sejalan dengan peringatan di DATASETS.txt A4: FER+ memangkas disgust dari
+      436 ke 175 gambar latih, dan ternyata bukan cuma disgust yang kena.
+
+PELAJARAN METODOLOGI. Bagian 20 membandingkan dua model yang berbeda di DUA
+      hal sekaligus lalu menimpakan seluruh selisihnya ke satu variabel.
+      Peringatannya memang ditulis, tapi angkanya terlanjur disajikan dengan
+      judul "bukti awal bahwa ExpW merugikan" - dan judul itulah yang menempel.
+      Kalau ada dua perbedaan, jangan menamai temuannya menurut salah satu.
+
+BELUM  Pertanyaan yang sekarang terbuka: apakah FER2013 label asli sebenarnya
+      LEBIH BAIK daripada FER+ untuk proyek ini? Ablasinya perlu satu training
+      lagi, fer2013 + expw + kdef:
+
+        python webcam/scripts/merge_datasets.py --sources fer2013,expw,kdef             --dst webcam/datasets/combined_fer2013 --force
+        python webcam/scripts/training_yolo_.py --yes             --data webcam/datasets/combined_fer2013             --name gabungan_fer2013 --workers 4 --batch 64
+
+      Lalu uji di CK+ dan KDEF. Kalau menang, keputusan memakai FER+ di bagian
+      13 perlu ditinjau ulang - dan itu keputusan yang cukup besar, karena
+      seluruh dataset gabungan dibangun di atasnya.
+
